@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import LoginView from "./components/LoginView.jsx";
 import {
   Scale,
   CheckCircle2,
@@ -28,8 +29,10 @@ import {
   MessageCircle,
   Download,
   Upload,
-  Camera
+  Camera,
+  Users
 } from "lucide-react";
+import AdminPanel from "./AdminPannel/AdminPanel.jsx";
 
 /* ---------------------------------------------------------------- */
 /* Constants & pure helpers                                          */
@@ -286,6 +289,145 @@ function NavButtons({ onBack, onNext, nextLabel = "Continue", backLabel = "Back"
   );
 }
 
+const MOCK_CLIENTS_DEFAULT = [
+  {
+    id: "c1",
+    name: "Radhe Agro Foods",
+    ownerName: "Shrimant Gaikwad",
+    phone: "9822014589",
+    firm: "Radhe Agro Foods Pvt Ltd",
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+    instrument: {
+      instrumentType: "Electronic Platform Scale",
+      make: "Acme Metrology",
+      model: "AP-300",
+      srNo: "SR-89423-B",
+      yearOfMfg: "2025",
+      accuracyClass: "III",
+      max: "300",
+      min: "2",
+      e: "0.1",
+      d: "0.1",
+      unit: "kg",
+      sealNo: "SL-9931"
+    },
+    certificates: [
+      {
+        certNo: "CERT-2026-9041",
+        date: "2026-07-16",
+        verdict: "pass",
+        ambientTemp: "27",
+        relHumidity: "55",
+        tests: {
+          visual: "pass",
+          zero: "pass",
+          eccentricity: "pass",
+          repeatability: "pass",
+          accuracy: "pass",
+          creep: "pass",
+          tare: "pass"
+        }
+      },
+      {
+        certNo: "CERT-2025-4512",
+        date: "2025-07-15",
+        verdict: "pass",
+        ambientTemp: "25",
+        relHumidity: "60",
+        tests: {
+          visual: "pass",
+          zero: "pass",
+          eccentricity: "pass",
+          repeatability: "pass",
+          accuracy: "pass",
+          creep: "pass",
+          tare: "pass"
+        }
+      }
+    ]
+  },
+  {
+    id: "c2",
+    name: "Balaji Steel Traders",
+    ownerName: "Swapnil Waghmare",
+    phone: "9422708312",
+    firm: "Balaji Steels & Alloys",
+    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+    instrument: {
+      instrumentType: "Heavy Weighbridge",
+      make: "Avery Weightronix",
+      model: "WB-60T",
+      srNo: "WB-2024-551",
+      yearOfMfg: "2024",
+      accuracyClass: "III",
+      max: "60000",
+      min: "400",
+      e: "20",
+      d: "20",
+      unit: "kg",
+      sealNo: "SL-5510"
+    },
+    certificates: [
+      {
+        certNo: "CERT-2026-1184",
+        date: "2026-05-10",
+        verdict: "fail",
+        ambientTemp: "31",
+        relHumidity: "42",
+        tests: {
+          visual: "pass",
+          zero: "pass",
+          eccentricity: "fail",
+          repeatability: "pass",
+          accuracy: "fail",
+          creep: "pass",
+          tare: "pass"
+        }
+      }
+    ]
+  },
+  {
+    id: "c3",
+    name: "Gauri Cold Storage",
+    ownerName: "Shivahari Mundhe",
+    phone: "8888451203",
+    firm: "Gauri Logistics & Cold Storage",
+    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
+    instrument: {
+      instrumentType: "Precision Bench Scale",
+      make: "Mettler Toledo",
+      model: "PB-30",
+      srNo: "MT-44021-P",
+      yearOfMfg: "2025",
+      accuracyClass: "II",
+      max: "30",
+      min: "0.1",
+      e: "0.01",
+      d: "0.01",
+      unit: "kg",
+      sealNo: "SL-1188"
+    },
+    certificates: [
+      {
+        certNo: "CERT-2026-3392",
+        date: "2026-06-20",
+        verdict: "pass",
+        ambientTemp: "24",
+        relHumidity: "48",
+        tests: {
+          visual: "pass",
+          zero: "pass",
+          eccentricity: "pass",
+          repeatability: "pass",
+          accuracy: "pass",
+          creep: "pass",
+          tare: "pass"
+        }
+      }
+    ]
+  }
+];
+
 /* ---------------------------------------------------------------- */
 /* Main App Component                                                */
 /* ---------------------------------------------------------------- */
@@ -331,6 +473,34 @@ const DEFAULT_OBS = {
 };
 
 export default function App() {
+  // Add user state inside your App component:
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('nawi-user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [viewMode, setViewMode] = useState("suite");
+
+  const [clients, setClients] = useState(() => {
+    const saved = localStorage.getItem('nawi-clients');
+    return saved ? JSON.parse(saved) : MOCK_CLIENTS_DEFAULT;
+  });
+
+  const [editingCert, setEditingCert] = useState(null);
+
+  // Handle login action
+  const handleLogin = (userData) => {
+    setUser(userData);
+    localStorage.setItem('nawi-user', JSON.stringify(userData));
+    // Automatically update instrument calibration engineer with the logged-in user's name
+    setInstrument(prev => ({ ...prev, calibrationEngineer: userData.name }));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('nawi-user');
+  };
+
   const [step, setStep] = useState("setup");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const fileInputRef = useRef(null);
@@ -387,6 +557,7 @@ export default function App() {
   });
 
   useEffect(() => {
+    localStorage.setItem('nawi-clients', JSON.stringify(clients));
     localStorage.setItem('nawi-instrument', JSON.stringify(instrument));
     localStorage.setItem('nawi-obs', JSON.stringify(observations));
     localStorage.setItem('nawi-visual', JSON.stringify(visualChecklist));
@@ -399,7 +570,7 @@ export default function App() {
     if (eccRows) localStorage.setItem('nawi-ecc', JSON.stringify(eccRows));
     if (eccLoad) localStorage.setItem('nawi-ecc-load', JSON.stringify(eccLoad));
     if (repBlocks) localStorage.setItem('nawi-rep', JSON.stringify(repBlocks));
-  }, [instrument, observations, visualChecklist, zeroTest, zeroTrack, creepTest, tareTest, accuracyRows, discRows, eccRows, eccLoad, repBlocks]);
+  }, [clients, instrument, observations, visualChecklist, zeroTest, zeroTrack, creepTest, tareTest, accuracyRows, discRows, eccRows, eccLoad, repBlocks]);
 
   const updateObs = (key) => (val) => setObservations(prev => ({...prev, [key]: val}));
 
@@ -599,7 +770,159 @@ export default function App() {
       setStep("report");
     }
   };
+  const handleEditCert = (client, cert) => {
+    // 1. Populate instrument metadata
+    setInstrument({
+      ...DEFAULT_INSTRUMENT,
+      ...client.instrument,
+      ownerName: client.ownerName,
+      ownerAddress: "MIDC CIDCO Area, Aurangabad",
+      ownerPhone: client.phone,
+      certNo: cert.certNo,
+      date: cert.date,
+      ambientTemp: cert.ambientTemp,
+      relHumidity: cert.relHumidity
+    });
 
+    // 2. Initialize visual checklist to match the verdict
+    setVisualChecklist(VISUAL_ITEMS.map((label, i) => ({ 
+      id: i, 
+      label, 
+      value: cert.tests.visual === "pass" ? "Yes" : "No" 
+    })));
+
+    // 3. Initialize test states to fail/pass defaults, giving the admin valid data they can override
+    setZeroTest({ load: "1", I: "1", deltaL: "0.5" });
+    setZeroTrack({ settingReadings: ["0.1", "0.2", "0.1"], trackingRangeObserved: "10" });
+    
+    // Setup test rows based on class & capacity
+    const eVal = parseFloat(client.instrument.e) || 0.1;
+    const maxVal = parseFloat(client.instrument.max) || 30;
+    const minVal = parseFloat(client.instrument.min) || 0.2;
+    
+    // Setup Accuracy Test rows
+    const suggested = suggestLoads(client.instrument.accuracyClass, eVal, minVal, maxVal);
+    setAccuracyRows(suggested.flatMap((load, i) => [
+      { id: i * 2 + 1, load: load.toString(), direction: "Increasing", I: load.toString(), deltaL: (cert.tests.accuracy === "pass" ? (eVal * 0.5).toString() : (eVal * 1.5).toString()) },
+      { id: i * 2 + 2, load: load.toString(), direction: "Decreasing", I: load.toString(), deltaL: (cert.tests.accuracy === "pass" ? (eVal * 0.5).toString() : (eVal * 1.5).toString()) }
+    ]));
+
+    // Setup Discrimination rows
+    setDiscRows([
+      { id: 1, load: minVal.toString(), I1: minVal.toString(), I2: (parseFloat(minVal) + eVal).toString() },
+      { id: 2, load: (maxVal / 2).toString(), I1: (maxVal / 2).toString(), I2: (cert.tests.discrimination === "pass" ? (maxVal / 2 + eVal).toString() : (maxVal / 2).toString()) }
+    ]);
+
+    // Setup Eccentricity rows
+    const eccLoadVal = round(maxVal / 3, 2);
+    setEccLoad(eccLoadVal);
+    const eccLabels = ["Position A (front-left)", "Position B (front-right)", "Position C (rear-right)", "Position D (rear-left)"];
+    setEccRows(eccLabels.map((label) => ({ 
+      label, 
+      I: eccLoadVal.toString(), 
+      deltaL: cert.tests.eccentricity === "pass" ? (eVal * 0.5).toString() : (eVal * 2.5).toString() 
+    })));
+
+    // Setup Repeatability blocks
+    const reps = repsForClass(client.instrument.accuracyClass);
+    const repLoads = [{ label: "Half load", load: round(maxVal / 2, 2) }, { label: "Full load (Max)", load: maxVal }];
+    setRepBlocks(repLoads.map((l) => ({
+      ...l,
+      rows: Array.from({ length: reps }, () => ({ 
+        I: l.load.toString(), 
+        deltaL: cert.tests.repeatability === "pass" ? (eVal * 0.5).toString() : (eVal * 3.0).toString() 
+      }))
+    })));
+
+    // Setup Creep
+    setCreepTest({
+      load: maxVal.toString(),
+      I0: maxVal.toString(),
+      I15: maxVal.toString(),
+      I30: maxVal.toString(),
+      I240: "",
+      zeroBefore: "0",
+      zeroAfter: cert.tests.creep === "pass" ? "0" : (eVal * 2).toString()
+    });
+
+    // Setup Tare
+    setTareTest({
+      tareLoad: (maxVal / 2).toString(),
+      zeroAfterTare: "0",
+      testLoad: (maxVal / 4).toString(),
+      I: (maxVal / 4).toString(),
+      deltaL: cert.tests.tare === "pass" ? (eVal * 0.5).toString() : (eVal * 4.0).toString()
+    });
+
+    // 4. Set views and step back to reports so they can preview, edit, or adjust specific parameters
+    setEditingCert({ client, cert });
+    setViewMode("suite");
+    setStep("setup");
+    alert(`Loaded data for Certificate ${cert.certNo}. You are now in editing mode. Modify setup values or navigate tabs in the sidebar to modify test parameters, then print/submit the updated certificate.`);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCert(null);
+    setViewMode("admin");
+    // Clear data back to empty
+    localStorage.removeItem('nawi-instrument');
+    localStorage.removeItem('nawi-obs');
+    localStorage.removeItem('nawi-visual');
+    localStorage.removeItem('nawi-zero');
+    localStorage.removeItem('nawi-zerotrack');
+    localStorage.removeItem('nawi-accuracy');
+    localStorage.removeItem('nawi-disc');
+    localStorage.removeItem('nawi-ecc');
+    localStorage.removeItem('nawi-ecc-load');
+    localStorage.removeItem('nawi-rep');
+    localStorage.removeItem('nawi-creep');
+    localStorage.removeItem('nawi-tare');
+    window.location.reload();
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingCert) return;
+    const { client, cert } = editingCert;
+
+    // Calculate new test results
+    const updatedTests = {
+      visual: visualOverall.status,
+      zero: !(zeroTest.load !== "" && zeroTest.I !== "" && zeroTest.deltaL !== "") ? "pending" : (E0 !== null ? "pass" : "fail"),
+      eccentricity: eccOverall.status,
+      repeatability: repOverall.status,
+      accuracy: accuracyOverall.status,
+      creep: creepOverall.status,
+      tare: tareOverall.status
+    };
+
+    const newVerdict = overallVerdict;
+
+    setClients(prevClients => prevClients.map(c => {
+      if (c.id !== client.id) return c;
+      return {
+        ...c,
+        instrument: {
+          ...c.instrument,
+          ...instrument
+        },
+        certificates: c.certificates.map(certificate => {
+          if (certificate.certNo !== cert.certNo) return certificate;
+          return {
+            ...certificate,
+            date: instrument.date,
+            ambientTemp: instrument.ambientTemp,
+            relHumidity: instrument.relHumidity,
+            verdict: newVerdict,
+            tests: updatedTests
+          };
+        })
+      };
+    }));
+
+    setEditingCert(null);
+    setViewMode("admin");
+    alert(`Certificate ${cert.certNo} successfully overridden and saved! New Status: ${newVerdict.toUpperCase()}`);
+  };
   const shareToWhatsApp = () => {
     const text = `*NAWI Verification Report*\n\n` +
       `*Test Centre:* ${instrument.labName}\n` +
@@ -732,13 +1055,23 @@ export default function App() {
       case "accuracy": return accuracyRows ? <AccuracyStep rows={accuracyRows} setRows={setAccuracyRows} resultFn={accuracyResult} E0={E0} unit={unit} obs={observations.accuracy} setObs={updateObs('accuracy')} onBack={() => goto("zerotrack")} onNext={() => goto("discrimination")} /> : null;
       case "discrimination": return discRows ? <DiscriminationStep rows={discRows} setRows={setDiscRows} resultFn={discResult} unit={unit} dFor={dFor} obs={observations.discrimination} setObs={updateObs('discrimination')} onBack={() => goto("accuracy")} onNext={() => goto("eccentricity")} /> : null;
       case "eccentricity": return eccRows ? <EccentricityStep rows={eccRows} setRows={setEccRows} resultFn={accuracyResult} eccLoad={eccLoad} unit={unit} positions={eccPositions} setPositions={(p) => { setEccPositions(p); initEccentricity(p); }} obs={observations.eccentricity} setObs={updateObs('eccentricity')} onBack={() => goto("discrimination")} onNext={() => goto("repeatability")} /> : null;
-      case "repeatability": return repBlocks ? <RepeatabilityStep blocks={repBlocks} setBlocks={setRepBlocks} resultFn={repResult} unit={unit} cls={cls} obs={observations.repeatability} setObs={updateObs('repeatability')} onBack={() => goto("eccentricity")} onNext={() => goto("creep")} /> : null;
+      case "repeatability": return repBlocks ? <RepeatabilityStep blocks={repBlocks} setBlocks={setRepBlocks} resultFn={repResult} unit={unit} cls={cls} repOverall={repOverall} obs={observations.repeatability} setObs={updateObs('repeatability')} onBack={() => goto("eccentricity")} onNext={() => goto("creep")} /> : null;
       case "creep": return <CreepStep creepTest={creepTest} setCreepTest={setCreepTest} resultFn={creepResult} unit={unit} obs={observations.creep} setObs={updateObs('creep')} onBack={() => goto("repeatability")} onNext={() => goto("tare")} />;
       case "tare": return <TareDeviceStep tareTest={tareTest} setTareTest={setTareTest} resultFn={tareResult} unit={unit} maxN={maxN} obs={observations.tare} setObs={updateObs('tare')} onBack={() => goto("creep")} onNext={() => goto("report")} />;
       case "report": return <ReportStep instrument={instrument} maxN={maxN} minN={minN} eN={eN} dN={dN} nIntervals={nIntervals} unit={unit} mpeAtMax={mpeAtMax} observations={observations} accuracyOverall={accuracyOverall} discOverall={discOverall} eccOverall={eccOverall} repOverall={repOverall} visualOverall={visualOverall} zeroTrackOverall={zeroTrackOverall} tareOverall={tareOverall} creepOverall={creepOverall} overallVerdict={overallVerdict} onBack={() => goto("tare")} />;
       default: return null;
     }
   };
+
+  // If user is not authenticated, render the login view instead of the app
+  if (!user) {
+    return <LoginView onLogin={handleLogin} />;
+  }
+
+  // Render Admin Panel if view mode matches
+  if (viewMode === "admin") {
+    return <AdminPanel onBackToSuite={() => setViewMode("suite")} onEditCert={handleEditCert} clients={clients} />;
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
@@ -786,12 +1119,58 @@ export default function App() {
            <button onClick={clearData} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-slate-800 text-red-400 rounded-lg hover:bg-slate-700 transition-colors">
               <Trash2 size={14} /> Reset Forms
            </button>
+           <button onClick={() => setViewMode("admin")} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-indigo-950 text-indigo-300 border border-indigo-900 rounded-lg hover:bg-indigo-900 transition-colors cursor-pointer">
+              <Users size={14} /> Admin Panel
+           </button>
+        </div>
+
+        {/* Sidebar Footer Profile - Added at the very end of the sidebar */}
+        <div className="p-4 border-t border-slate-800 flex items-center justify-between bg-slate-950/40">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="w-9 h-9 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0">
+              {user.name.charAt(0)}
+            </div>
+            <div className="truncate">
+              <div className="text-xs font-bold text-white truncate">{user.name}</div>
+              <div className="text-[10px] text-indigo-400 font-mono">{user.credentials}</div>
+            </div>
+          </div>
+          <button 
+            onClick={handleLogout} 
+            title="Logout"
+            className="text-slate-400 hover:text-red-400 p-1.5 transition-colors"
+          >
+            <Trash2 size={16} />
+          </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         
+        {editingCert && (
+          <div className="bg-amber-600 text-white px-4 py-3 flex items-center justify-between shadow-md z-20 shrink-0">
+            <div className="flex items-center gap-2.5 text-sm font-bold">
+              <span className="animate-pulse bg-white/20 px-2 py-0.5 rounded text-xs uppercase font-mono">Edit Mode</span>
+              <span>Modifying Certification <b>{editingCert.cert.certNo}</b> for <b>{editingCert.client.name}</b></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={handleSaveEdit}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2 rounded-lg shadow cursor-pointer transition-all uppercase tracking-wider"
+              >
+                Save Overrides
+              </button>
+              <button 
+                onClick={handleCancelEdit}
+                className="bg-slate-900 hover:bg-slate-800 text-slate-200 font-bold text-xs px-4 py-2 rounded-lg cursor-pointer transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Top Header - Sharing & Actions */}
         <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between print:hidden shadow-sm z-10 flex-wrap gap-3">
           <div className="flex items-center gap-3">
@@ -851,10 +1230,8 @@ function SetupStep({ instrument, setInstrument, maxN, minN, eN, nIntervals, isMu
         <Field label="Test Centre Address"><TextInput value={instrument.labAddress} onChange={set("labAddress")} /></Field>
         <Field label="Certificate No."><TextInput value={instrument.certNo} onChange={set("certNo")} placeholder="IND/GATC/MH/26/09/26/133" /></Field>
         <Field label="Date of verification"><TextInput type="date" value={instrument.date} onChange={set("date")} /></Field>
-        <Field label="Calibration Engineer">
-          <select className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none" style={{ color: '#1e293b' }} value={instrument.calibrationEngineer} onChange={set("calibrationEngineer")}>
-            {ENGINEER_OPTIONS.map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
+        <Field label="Principal Officer">
+          <TextInput value={instrument.principalOfficer} onChange={set("principalOfficer")} />
         </Field>
       </div>
 
@@ -958,6 +1335,11 @@ function ZeroStep({ zeroTest, setZeroTest, eN, unit, E0, obs, setObs, onBack, on
         <div className="text-xs text-slate-400 mt-2 font-mono">E₀ = I + ½e − ΔL − L</div>
       </div>
 
+      <div className="mt-6 flex items-center justify-between p-4 bg-slate-100 rounded-xl border border-slate-200" style={{ color: '#334155' }}>
+        <span className="font-bold text-slate-700" style={{ color: '#334155' }}>Overall Result:</span>
+        <Badge status={!(zeroTest.load !== "" && zeroTest.I !== "" && zeroTest.deltaL !== "") ? "pending" : (E0 !== null ? "pass" : "fail")} />
+      </div>
+
       <TextAreaObs value={obs} onChange={setObs} />
       <NavButtons onBack={onBack} onNext={onNext} nextLabel="Proceed to Zero Tracking" />
     </SectionCard>
@@ -999,6 +1381,11 @@ function ZeroTrackingStep({ zeroTrack, setZeroTrack, resultFn, eZero, maxN, unit
              </div>
           </div>
         </div>
+      </div>
+
+      <div className="mt-6 flex items-center justify-between p-4 bg-slate-100 rounded-xl border border-slate-200" style={{ color: '#334155' }}>
+        <span className="font-bold text-slate-700" style={{ color: '#334155' }}>Overall Result:</span>
+        <Badge status={!res.complete ? "pending" : res.pass ? "pass" : "fail"} />
       </div>
 
       <TextAreaObs value={obs} onChange={setObs} />
@@ -1081,8 +1468,8 @@ function AccuracyStep({ rows, setRows, resultFn, E0, unit, obs, setObs, onBack, 
         </table>
       </div>
 
-      <div className="mt-6 flex items-center justify-between p-4 bg-slate-100 rounded-xl border border-slate-200">
-        <span className="font-bold text-slate-700">Overall Accuracy Result:</span>
+      <div className="mt-6 flex items-center justify-between p-4 bg-slate-100 rounded-xl border border-slate-200" style={{ color: '#334155' }}>
+        <span className="font-bold text-slate-700" style={{ color: '#334155' }}>Overall Result:</span>
         <Badge status={!allComplete ? "pending" : allPass ? "pass" : "fail"} />
       </div>
 
@@ -1137,6 +1524,11 @@ function DiscriminationStep({ rows, setRows, resultFn, unit, dFor, obs, setObs, 
         </table>
       </div>
       
+      <div className="mt-6 flex items-center justify-between p-4 bg-slate-100 rounded-xl border border-slate-200" style={{ color: '#334155' }}>
+        <span className="font-bold text-slate-700" style={{ color: '#334155' }}>Overall Result:</span>
+        <Badge status={!allComplete ? "pending" : allPass ? "pass" : "fail"} />
+      </div>
+
       <TextAreaObs value={obs} onChange={setObs} />
       <NavButtons onBack={onBack} onNext={onNext} nextLabel="Proceed to Eccentricity" />
     </SectionCard>
@@ -1200,13 +1592,18 @@ function EccentricityStep({ rows, setRows, resultFn, eccLoad, unit, positions, s
         </table>
       </div>
 
+      <div className="mt-6 flex items-center justify-between p-4 bg-slate-100 rounded-xl border border-slate-200" style={{ color: '#334155' }}>
+        <span className="font-bold text-slate-700" style={{ color: '#334155' }}>Overall Result:</span>
+        <Badge status={!allComplete ? "pending" : allPass ? "pass" : "fail"} />
+      </div>
+
       <TextAreaObs value={obs} onChange={setObs} />
       <NavButtons onBack={onBack} onNext={onNext} nextLabel="Proceed to Repeatability" />
     </SectionCard>
   );
 }
 
-function RepeatabilityStep({ blocks, setBlocks, resultFn, unit, cls, obs, setObs, onBack, onNext }) {
+function RepeatabilityStep({ blocks, setBlocks, resultFn, unit, cls, repOverall, obs, setObs, onBack, onNext }) {
   const reps = repsForClass(cls);
   const update = (bIdx, rIdx, patch) => setBlocks((bs) => bs.map((b, i) => i !== bIdx ? b : { ...b, rows: b.rows.map((r, j) => (j === rIdx ? { ...r, ...patch } : r)) }));
 
@@ -1261,6 +1658,11 @@ function RepeatabilityStep({ blocks, setBlocks, resultFn, unit, cls, obs, setObs
             </div>
           );
         })}
+      </div>
+
+      <div className="mt-6 flex items-center justify-between p-4 bg-slate-100 rounded-xl border border-slate-200" style={{ color: '#334155' }}>
+        <span className="font-bold text-slate-700" style={{ color: '#334155' }}>Overall Result:</span>
+        <Badge status={repOverall.status} />
       </div>
 
       <TextAreaObs value={obs} onChange={setObs} />
@@ -1322,6 +1724,11 @@ function CreepStep({ creepTest, setCreepTest, resultFn, unit, obs, setObs, onBac
          </div>
       </div>
       
+      <div className="mt-6 flex items-center justify-between p-4 bg-slate-100 rounded-xl border border-slate-200" style={{ color: '#334155' }}>
+        <span className="font-bold text-slate-700" style={{ color: '#334155' }}>Overall Result:</span>
+        <Badge status={!res.complete ? "pending" : res.pass ? "pass" : "fail"} />
+      </div>
+
       <TextAreaObs value={obs} onChange={setObs} />
       <NavButtons onBack={onBack} onNext={onNext} nextLabel="Proceed to Tare Test" />
     </SectionCard>
@@ -1365,6 +1772,11 @@ function TareDeviceStep({ tareTest, setTareTest, resultFn, unit, maxN, obs, setO
               </span>
            )}
         </div>
+      </div>
+
+      <div className="mt-6 flex items-center justify-between p-4 bg-slate-100 rounded-xl border border-slate-200" style={{ color: '#334155' }}>
+        <span className="font-bold text-slate-700" style={{ color: '#334155' }}>Overall Result:</span>
+        <Badge status={!res.complete ? "pending" : res.pass ? "pass" : "fail"} />
       </div>
 
       <TextAreaObs value={obs} onChange={setObs} />
