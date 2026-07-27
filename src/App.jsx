@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import LoginView from "./components/LoginView.jsx";
+import LoginView from "./Components/LoginView.jsx";
 import {
   Scale,
   CheckCircle2,
