@@ -32,7 +32,14 @@ import {
   Camera,
   Users
 } from "lucide-react";
-import AdminPanel from "./AdminPannel/AdminPanel.jsx";
+import { Routes, Route, Navigate, Link, useNavigate } from "react-router-dom";
+import { useAuth } from "./context/AuthContext.jsx";
+import { useReport } from "./context/ReportContext.jsx";
+import AdminLayout from "./components/AdminPanel/AdminLayout.jsx";
+import Dashboard from "./components/AdminPanel/Dashboard/Dashboard.jsx";
+import ReportsList from "./components/AdminPanel/Reports/ReportsList.jsx";
+import UsersList from "./components/AdminPanel/Users/UsersList.jsx";
+import AuditLogTable from "./components/AdminPanel/AuditLogs/AuditLogTable.jsx";
 
 /* ---------------------------------------------------------------- */
 /* Constants & pure helpers                                          */
@@ -472,14 +479,9 @@ const DEFAULT_OBS = {
   visual: "", zero: "", zerotrack: "", accuracy: "", discrimination: "", eccentricity: "", repeatability: "", creep: "", tare: ""
 };
 
-export default function App() {
-  // Add user state inside your App component:
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('nawi-user');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [viewMode, setViewMode] = useState("suite");
+export function VerificationSuite() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const [clients, setClients] = useState(() => {
     const saved = localStorage.getItem('nawi-clients');
@@ -487,19 +489,6 @@ export default function App() {
   });
 
   const [editingCert, setEditingCert] = useState(null);
-
-  // Handle login action
-  const handleLogin = (userData) => {
-    setUser(userData);
-    localStorage.setItem('nawi-user', JSON.stringify(userData));
-    // Automatically update instrument calibration engineer with the logged-in user's name
-    setInstrument(prev => ({ ...prev, calibrationEngineer: userData.name }));
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('nawi-user');
-  };
 
   const [step, setStep] = useState("setup");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1063,15 +1052,7 @@ export default function App() {
     }
   };
 
-  // If user is not authenticated, render the login view instead of the app
-  if (!user) {
-    return <LoginView onLogin={handleLogin} />;
-  }
-
-  // Render Admin Panel if view mode matches
-  if (viewMode === "admin") {
-    return <AdminPanel onBackToSuite={() => setViewMode("suite")} onEditCert={handleEditCert} clients={clients} />;
-  }
+  // Routing checks are managed at App.jsx root route guards
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
@@ -1119,7 +1100,7 @@ export default function App() {
            <button onClick={clearData} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-slate-800 text-red-400 rounded-lg hover:bg-slate-700 transition-colors">
               <Trash2 size={14} /> Reset Forms
            </button>
-           <button onClick={() => setViewMode("admin")} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-indigo-950 text-indigo-300 border border-indigo-900 rounded-lg hover:bg-indigo-900 transition-colors cursor-pointer">
+           <button onClick={() => navigate("/admin/dashboard")} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-indigo-950 text-indigo-300 border border-indigo-900 rounded-lg hover:bg-indigo-900 transition-colors cursor-pointer">
               <Users size={14} /> Admin Panel
            </button>
         </div>
@@ -1128,15 +1109,15 @@ export default function App() {
         <div className="p-4 border-t border-slate-800 flex items-center justify-between bg-slate-950/40">
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="w-9 h-9 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0">
-              {user.name.charAt(0)}
+              {(user?.username || user?.email || "U").charAt(0).toUpperCase()}
             </div>
             <div className="truncate">
-              <div className="text-xs font-bold text-white truncate">{user.name}</div>
-              <div className="text-[10px] text-indigo-400 font-mono">{user.credentials}</div>
+              <div className="text-xs font-bold text-white truncate">{user?.username || "Inspector"}</div>
+              <div className="text-[10px] text-indigo-400 font-mono">{user?.role || "user"}</div>
             </div>
           </div>
           <button 
-            onClick={handleLogout} 
+            onClick={logout} 
             title="Logout"
             className="text-slate-400 hover:text-red-400 p-1.5 transition-colors"
           >
@@ -1947,5 +1928,75 @@ function ReportStep({ instrument, maxN, unit, nIntervals, mpeAtMax, observations
         <NavButtons onBack={onBack} onNext={() => window.print()} nextLabel="Print Certificate" backLabel="Back" />
       </div>
     </SectionCard>
+  );
+}
+
+// Protected Route Guard
+function ProtectedRoute({ children, requiredRole }) {
+  const { isAuthenticated, user, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="animate-spin text-indigo-600 text-lg font-bold">Loading session...</div>
+      </div>
+    );
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  if (requiredRole === "admin" && (user?.role !== "admin" || user?.email !== "ilmchikhli@gmail.com")) {
+    return <Navigate to="/verification" replace />;
+  }
+  return children;
+}
+
+// Login Route wrapper to handle login transition or auto-redirection if authenticated
+function LoginRoute() {
+  const { isAuthenticated, login } = useAuth();
+  if (isAuthenticated) {
+    return <Navigate to="/verification" replace />;
+  }
+  return <LoginView onLogin={(creds) => login(creds.email, creds.password)} />;
+}
+
+// Default Home Redirector
+function HomeRedirect() {
+  const { isAuthenticated } = useAuth();
+  return isAuthenticated ? (
+    <Navigate to="/verification" replace />
+  ) : (
+    <Navigate to="/login" replace />
+  );
+}
+
+// Main App Component with router bindings
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginRoute />} />
+      <Route
+        path="/verification"
+        element={
+          <ProtectedRoute>
+            <VerificationSuite />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="reports" element={<ReportsList />} />
+        <Route path="users" element={<UsersList />} />
+        <Route path="audit-logs" element={<AuditLogTable />} />
+      </Route>
+      <Route path="/" element={<HomeRedirect />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

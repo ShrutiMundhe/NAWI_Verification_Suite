@@ -22,3 +22,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Secrets & Configs
+.env
+.env.*
+!.env.example
+
+# Dependency Directories
+node_modules/
+backend/node_modules/
+
+# Logs
+logs/
+backend/logs/
+*.log
+
