@@ -13,9 +13,9 @@ export default function AdminPanel({ onBackToSuite, onEditCert, clients = [] }) 
 
   // Search Filter
   const filteredClients = clients.filter(client => 
-    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.ownerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.firm.toLowerCase().includes(searchTerm.toLowerCase())
+    (client.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (client.ownerName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (client.firm || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handlePrintCert = () => {

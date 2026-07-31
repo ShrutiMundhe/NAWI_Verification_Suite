@@ -30,7 +30,8 @@ import {
   Download,
   Upload,
   Camera,
-  Users
+  Users,
+  Save
 } from "lucide-react";
 import AdminPanel from "./AdminPannel/AdminPanel.jsx";
 
@@ -67,9 +68,9 @@ const VISUAL_ITEMS = [
 
 const BANDS = {
   I: [50000, 200000],
-  II: [5000, 20000, 100000],
-  III: [500, 2000, 10000],
-  IV: [50, 200, 1000],
+  II: [5000, 20000],
+  III: [500, 2000],
+  IV: [50, 200],
 };
 
 const CLASS_LABEL = {
@@ -88,8 +89,9 @@ function n(v) {
 }
 
 function computeE(I, deltaL, L, e) {
-  const i = n(I), dl = n(deltaL), l = n(L), ee = n(e);
-  if (i === null || dl === null || l === null || ee === null) return null;
+  const i = n(I), l = n(L), ee = n(e);
+  if (i === null || l === null || ee === null) return null;
+  const dl = n(deltaL) !== null ? n(deltaL) : 0.5 * ee;
   return i + 0.5 * ee - dl - l;
 }
 
@@ -473,11 +475,8 @@ const DEFAULT_OBS = {
 };
 
 export default function App() {
-  // Add user state inside your App component:
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('nawi-user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  // Initialize user state as null so the website always starts with the login panel
+  const [user, setUser] = useState(null);
 
   const [viewMode, setViewMode] = useState("suite");
 
@@ -569,8 +568,17 @@ export default function App() {
     if (discRows) localStorage.setItem('nawi-disc', JSON.stringify(discRows));
     if (eccRows) localStorage.setItem('nawi-ecc', JSON.stringify(eccRows));
     if (eccLoad) localStorage.setItem('nawi-ecc-load', JSON.stringify(eccLoad));
-    if (repBlocks) localStorage.setItem('nawi-rep', JSON.stringify(repBlocks));
   }, [clients, instrument, observations, visualChecklist, zeroTest, zeroTrack, creepTest, tareTest, accuracyRows, discRows, eccRows, eccLoad, repBlocks]);
+
+  // Sync clients from localStorage whenever view mode or user changes
+  useEffect(() => {
+    const saved = localStorage.getItem('nawi-clients');
+    if (saved) {
+      try {
+        setClients(JSON.parse(saved));
+      } catch (e) {}
+    }
+  }, [viewMode, user]);
 
   const updateObs = (key) => (val) => setObservations(prev => ({...prev, [key]: val}));
 
@@ -607,10 +615,11 @@ export default function App() {
   function accuracyResult(row) {
     const e = eFor(row.load);
     const E = computeE(row.I, row.deltaL, row.load, e);
-    if (E === null || E0 === null) return { complete: false, e };
-    const Ec = E - E0;
+    if (E === null) return { complete: false, e };
+    const e0Val = E0 !== null ? E0 : 0;
+    const Ec = E - e0Val;
     const mpe = getMPE(cls, row.load, e, instrument.mode);
-    return { complete: true, e, E, E0, Ec, mpe, pass: Math.abs(Ec) <= mpe + 1e-9 };
+    return { complete: true, e, E, E0: e0Val, Ec, mpe, pass: Math.abs(Ec) <= mpe + 1e-9 };
   }
   function discResult(row) {
     const d = dFor(row.load);
@@ -652,14 +661,14 @@ export default function App() {
       if (!creepComplete || !zrComplete) return { complete: false };
       const diff30 = Math.abs(i30 - i0);
       const diff15_30 = Math.abs(i30 - i15);
-      let creepPass = diff30 <= 0.5 * e && diff15_30 <= 0.2 * e;
+      let creepPass = diff30 <= 0.5 * e + 1e-9 && diff15_30 <= 0.2 * e + 1e-9;
       if (!creepPass && i240 !== null) {
           const mpe = getMPE(cls, load, e, instrument.mode);
           const diff240 = Math.abs(i240 - i0);
-          creepPass = diff240 <= mpe;
+          creepPass = diff240 <= mpe + 1e-9;
       }
       const zrDiff = Math.abs(za - zb);
-      const zrPass = zrDiff <= 0.5 * eFor(0);
+      const zrPass = zrDiff <= 0.5 * eFor(0) + 1e-9;
       return { complete: true, diff30, diff15_30, creepPass, zrDiff, zrPass, pass: creepPass && zrPass, e };
   }
   function tareResult() {
@@ -686,17 +695,18 @@ export default function App() {
 
   const accuracyOverall = overallForRows(accuracyRows, accuracyResult);
   const discOverall = overallForRows(discRows, discResult);
-  const eccOverall = overallForRows(eccRows, accuracyResult);
+  const eccOverall = overallForRows(eccRows ? eccRows.map((r) => ({ ...r, load: r.load ?? eccLoad })) : null, accuracyResult);
   let repOverall = { status: "pending", complete: false };
   if (repBlocks) {
     const blockVerdicts = repBlocks.map((b) => {
-      const results = b.rows.map((r) => repResult(r, b.load));
+      const blockLoad = n(b.load) || (b.label?.toLowerCase().includes("half") ? round(maxN / 2, 2) : maxN);
+      const results = b.rows.map((r) => repResult(r, blockLoad));
       const complete = results.every((r) => r.complete);
       if (!complete) return { complete: false };
       const errs = results.map((r) => r.E);
       const range = Math.max(...errs) - Math.min(...errs);
-      const mpe = getMPE(cls, b.load, eN, instrument.mode);
-      const pass = results.every((r) => r.pass) && range <= mpe + 1e-9;
+      const mpe = getMPE(cls, blockLoad, eFor(blockLoad), instrument.mode);
+      const pass = range <= mpe + 1e-9;
       return { complete: true, pass, range, mpe, results };
     });
     const complete = blockVerdicts.every((b) => b.complete);
@@ -791,14 +801,14 @@ export default function App() {
       value: cert.tests.visual === "pass" ? "Yes" : "No" 
     })));
 
-    // 3. Initialize test states to fail/pass defaults, giving the admin valid data they can override
-    setZeroTest({ load: "1", I: "1", deltaL: "0.5" });
-    setZeroTrack({ settingReadings: ["0.1", "0.2", "0.1"], trackingRangeObserved: "10" });
-    
     // Setup test rows based on class & capacity
     const eVal = parseFloat(client.instrument.e) || 0.1;
     const maxVal = parseFloat(client.instrument.max) || 30;
     const minVal = parseFloat(client.instrument.min) || 0.2;
+
+    // 3. Initialize test states to fail/pass defaults, giving the admin valid data they can override
+    setZeroTest({ load: (eVal * 10).toString(), I: (eVal * 10).toString(), deltaL: (eVal * 0.5).toString() });
+    setZeroTrack({ settingReadings: ["0.1", "0.2", "0.1"], trackingRangeObserved: "10" });
     
     // Setup Accuracy Test rows
     const suggested = suggestLoads(client.instrument.accuracyClass, eVal, minVal, maxVal);
@@ -993,16 +1003,133 @@ export default function App() {
      a.click();
   };
 
+  const handleSaveReportToAdmin = () => {
+    const certNumber = instrument.certNo || `CERT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const currentDate = instrument.date || new Date().toISOString().slice(0, 10);
+    const clientName = instrument.ownerName?.trim() || "Unassigned Client";
+    const srNoVal = instrument.srNo?.trim() || "";
+
+    const newCert = {
+      certNo: certNumber,
+      date: currentDate,
+      verdict: overallVerdict,
+      ambientTemp: instrument.ambientTemp || "25",
+      relHumidity: instrument.relHumidity || "55",
+      tests: {
+        visual: visualOverall.status,
+        zero: zeroTrackOverall.status,
+        eccentricity: eccOverall.status,
+        repeatability: repOverall.status,
+        accuracy: accuracyOverall.status,
+        creep: creepOverall.status,
+        tare: tareOverall.status,
+        discrimination: discOverall.status
+      },
+      instrumentDetails: { ...instrument }
+    };
+
+    setClients(prevClients => {
+      // Don't match empty srNo or generic Unassigned Client to existing cards
+      const existingIdx = prevClients.findIndex(c => {
+        if (clientName !== "Unassigned Client") {
+          return (c.ownerName && c.ownerName.toLowerCase() === clientName.toLowerCase()) ||
+                 (c.name && c.name.toLowerCase() === clientName.toLowerCase());
+        }
+        if (srNoVal !== "") {
+          return c.instrument?.srNo && c.instrument.srNo.toLowerCase() === srNoVal.toLowerCase();
+        }
+        return false;
+      });
+
+      let updatedClients;
+      if (existingIdx !== -1) {
+        updatedClients = prevClients.map((c, idx) => {
+          if (idx !== existingIdx) return c;
+          const certExists = c.certificates.some(cert => cert.certNo === certNumber);
+          const updatedCerts = certExists
+            ? c.certificates.map(cert => cert.certNo === certNumber ? { ...cert, ...newCert } : cert)
+            : [newCert, ...c.certificates];
+
+          return {
+            ...c,
+            name: clientName !== "Unassigned Client" ? clientName : c.name,
+            ownerName: instrument.ownerName || c.ownerName,
+            phone: instrument.ownerPhone || c.phone,
+            firm: instrument.ownerAddress || c.firm,
+            instrument: {
+              ...c.instrument,
+              instrumentType: instrument.instrumentType || c.instrument?.instrumentType,
+              make: instrument.make || c.instrument?.make,
+              model: instrument.model || c.instrument?.model,
+              srNo: srNoVal || c.instrument?.srNo,
+              yearOfMfg: instrument.yearOfMfg || c.instrument?.yearOfMfg,
+              accuracyClass: instrument.accuracyClass || c.instrument?.accuracyClass,
+              max: maxN?.toString() || c.instrument?.max,
+              min: minN?.toString() || c.instrument?.min,
+              e: eN?.toString() || c.instrument?.e,
+              d: dN?.toString() || c.instrument?.d,
+              unit: unit || c.instrument?.unit,
+              sealNo: instrument.sealNo || c.instrument?.sealNo
+            },
+            certificates: updatedCerts
+          };
+        });
+      } else {
+        const newClient = {
+          id: "c_" + Date.now(),
+          name: clientName,
+          ownerName: instrument.ownerName || "Client Owner",
+          phone: instrument.ownerPhone || "N/A",
+          firm: instrument.ownerAddress || clientName,
+          avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+          instrument: {
+            instrumentType: instrument.instrumentType || "Platform Scale",
+            make: instrument.make || "Standard",
+            model: instrument.model || "NAWI-1",
+            srNo: srNoVal || "SR-" + Date.now(),
+            yearOfMfg: instrument.yearOfMfg || new Date().getFullYear().toString(),
+            accuracyClass: instrument.accuracyClass || "III",
+            max: maxN?.toString() || "300",
+            min: minN?.toString() || "2",
+            e: eN?.toString() || "0.1",
+            d: dN?.toString() || "0.1",
+            unit: unit || "kg",
+            sealNo: instrument.sealNo || "SL-0000"
+          },
+          certificates: [newCert]
+        };
+        updatedClients = [newClient, ...prevClients];
+      }
+
+      try {
+        localStorage.setItem('nawi-clients', JSON.stringify(updatedClients));
+      } catch (e) {}
+
+      return updatedClients;
+    });
+
+    alert(`Report & Certificate (${certNumber}) saved successfully! The report information has been added to the Admin Panel.`);
+  };
+
   /* ---------- Nav Logic ---------- */
 
   function initAccuracy() {
     const loads = isMultiRange ? suggestLoadsMultiRange(cls, ranges) : suggestLoads(cls, eN, minN, maxN);
-    const rows = [];
-    let id = 1;
-    loads.forEach((load) => {
-      rows.push({ id: id++, load, direction: "Increasing", I: "", deltaL: "" });
-      rows.push({ id: id++, load, direction: "Decreasing", I: "", deltaL: "" });
-    });
+    let selectedLoads = [...loads];
+    if (selectedLoads.length > 5) {
+      selectedLoads = selectedLoads.slice(0, 5);
+    } else {
+      while (selectedLoads.length < 5) {
+        selectedLoads.push(maxN || 0);
+      }
+    }
+    const rows = selectedLoads.map((load, idx) => ({
+      id: idx + 1,
+      load: load,
+      direction: "Increasing",
+      I: "",
+      deltaL: ""
+    }));
     setAccuracyRows(rows);
   }
 
@@ -1034,7 +1161,7 @@ export default function App() {
     if (stepId === "accuracy" && !accuracyRows) initAccuracy();
     if (stepId === "discrimination" && !discRows) initDiscrimination();
     if (stepId === "eccentricity" && !eccRows) initEccentricity();
-    if (stepId === "repeatability" && !repBlocks) initRepeatability();
+    if (stepId === "repeatability" && (!repBlocks || (maxN > 0 && repBlocks.some(b => !b.load)))) initRepeatability();
     if (stepId === "creep" && !creepTest.load) initCreep();
     
     setStep(stepId);
@@ -1055,10 +1182,10 @@ export default function App() {
       case "accuracy": return accuracyRows ? <AccuracyStep rows={accuracyRows} setRows={setAccuracyRows} resultFn={accuracyResult} E0={E0} unit={unit} obs={observations.accuracy} setObs={updateObs('accuracy')} onBack={() => goto("zerotrack")} onNext={() => goto("discrimination")} /> : null;
       case "discrimination": return discRows ? <DiscriminationStep rows={discRows} setRows={setDiscRows} resultFn={discResult} unit={unit} dFor={dFor} obs={observations.discrimination} setObs={updateObs('discrimination')} onBack={() => goto("accuracy")} onNext={() => goto("eccentricity")} /> : null;
       case "eccentricity": return eccRows ? <EccentricityStep rows={eccRows} setRows={setEccRows} resultFn={accuracyResult} eccLoad={eccLoad} unit={unit} positions={eccPositions} setPositions={(p) => { setEccPositions(p); initEccentricity(p); }} obs={observations.eccentricity} setObs={updateObs('eccentricity')} onBack={() => goto("discrimination")} onNext={() => goto("repeatability")} /> : null;
-      case "repeatability": return repBlocks ? <RepeatabilityStep blocks={repBlocks} setBlocks={setRepBlocks} resultFn={repResult} unit={unit} cls={cls} repOverall={repOverall} obs={observations.repeatability} setObs={updateObs('repeatability')} onBack={() => goto("eccentricity")} onNext={() => goto("creep")} /> : null;
+      case "repeatability": return repBlocks ? <RepeatabilityStep maxN={maxN} blocks={repBlocks} setBlocks={setRepBlocks} resultFn={repResult} unit={unit} cls={cls} repOverall={repOverall} obs={observations.repeatability} setObs={updateObs('repeatability')} onBack={() => goto("eccentricity")} onNext={() => goto("creep")} /> : null;
       case "creep": return <CreepStep creepTest={creepTest} setCreepTest={setCreepTest} resultFn={creepResult} unit={unit} obs={observations.creep} setObs={updateObs('creep')} onBack={() => goto("repeatability")} onNext={() => goto("tare")} />;
       case "tare": return <TareDeviceStep tareTest={tareTest} setTareTest={setTareTest} resultFn={tareResult} unit={unit} maxN={maxN} obs={observations.tare} setObs={updateObs('tare')} onBack={() => goto("creep")} onNext={() => goto("report")} />;
-      case "report": return <ReportStep instrument={instrument} maxN={maxN} minN={minN} eN={eN} dN={dN} nIntervals={nIntervals} unit={unit} mpeAtMax={mpeAtMax} observations={observations} accuracyOverall={accuracyOverall} discOverall={discOverall} eccOverall={eccOverall} repOverall={repOverall} visualOverall={visualOverall} zeroTrackOverall={zeroTrackOverall} tareOverall={tareOverall} creepOverall={creepOverall} overallVerdict={overallVerdict} onBack={() => goto("tare")} />;
+      case "report": return <ReportStep instrument={instrument} maxN={maxN} minN={minN} eN={eN} dN={dN} nIntervals={nIntervals} unit={unit} mpeAtMax={mpeAtMax} observations={observations} accuracyOverall={accuracyOverall} discOverall={discOverall} eccOverall={eccOverall} repOverall={repOverall} visualOverall={visualOverall} zeroTrackOverall={zeroTrackOverall} tareOverall={tareOverall} creepOverall={creepOverall} overallVerdict={overallVerdict} onBack={() => goto("tare")} onSave={handleSaveReportToAdmin} />;
       default: return null;
     }
   };
@@ -1068,8 +1195,8 @@ export default function App() {
     return <LoginView onLogin={handleLogin} />;
   }
 
-  // Render Admin Panel if view mode matches
-  if (viewMode === "admin") {
+  // Render Admin Panel if view mode matches and user has admin privileges
+  if (viewMode === "admin" && (user?.role === "admin" || user?.email?.toLowerCase() === "ilmchikhli@gmail.com")) {
     return <AdminPanel onBackToSuite={() => setViewMode("suite")} onEditCert={handleEditCert} clients={clients} />;
   }
 
@@ -1119,9 +1246,11 @@ export default function App() {
            <button onClick={clearData} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-slate-800 text-red-400 rounded-lg hover:bg-slate-700 transition-colors">
               <Trash2 size={14} /> Reset Forms
            </button>
-           <button onClick={() => setViewMode("admin")} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-indigo-950 text-indigo-300 border border-indigo-900 rounded-lg hover:bg-indigo-900 transition-colors cursor-pointer">
-              <Users size={14} /> Admin Panel
-           </button>
+           {(user?.role === "admin" || user?.email?.toLowerCase() === "ilmchikhli@gmail.com") && (
+             <button onClick={() => setViewMode("admin")} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-indigo-950 text-indigo-300 border border-indigo-900 rounded-lg hover:bg-indigo-900 transition-colors cursor-pointer">
+                <Users size={14} /> Admin Panel
+             </button>
+           )}
         </div>
 
         {/* Sidebar Footer Profile - Added at the very end of the sidebar */}
@@ -1403,11 +1532,7 @@ function AccuracyStep({ rows, setRows, resultFn, E0, unit, obs, setObs, onBack, 
   const allPass = allComplete && rows.every((r) => resultFn(r).pass);
 
   return (
-    <SectionCard title="Accuracy Test (Weighing Test)" action={
-      <button onClick={addRow} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-bold hover:bg-indigo-200">
-        <Plus size={16} /> Add Row
-      </button>
-    }>
+    <SectionCard title="Accuracy Test (Weighing Test)">
       <Instructions title="Procedure & Error Calculations">
         Test loads progressively up to Max, then back down. The table explicitly calculates Errors based on the standard formulas: <br/>
         <b>Error (E) =</b> I + ½e − ΔL − L <br/>
@@ -1418,6 +1543,7 @@ function AccuracyStep({ rows, setRows, resultFn, E0, unit, obs, setObs, onBack, 
         <table className="w-full text-sm text-left">
           <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider">
             <tr>
+              <th className="py-3 px-2 text-center text-xs w-10"></th>
               <th className="py-3 px-4 text-xs whitespace-nowrap">Load ({unit})</th>
               <th className="py-3 px-4 text-xs">Dir</th>
               <th className="py-3 px-4 text-xs text-indigo-700 bg-indigo-50/50">e</th>
@@ -1436,7 +1562,6 @@ function AccuracyStep({ rows, setRows, resultFn, E0, unit, obs, setObs, onBack, 
               </th>
               <th className="py-3 px-4 text-xs border-l border-slate-300">MPE</th>
               <th className="py-3 px-4 text-xs">Result</th>
-              <th className="py-3 px-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -1444,6 +1569,16 @@ function AccuracyStep({ rows, setRows, resultFn, E0, unit, obs, setObs, onBack, 
               const res = resultFn(row);
               return (
                 <tr key={row.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="py-2 px-2 text-center">
+                    <button 
+                      type="button"
+                      onClick={() => removeRow(idx)} 
+                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                      title="Delete row"
+                    >
+                      <X size={16} />
+                    </button>
+                  </td>
                   <td className="py-2 px-4"><TextInput type="number" value={row.load} onChange={(e) => update(idx, { load: e.target.value })} className="w-20" /></td>
                   <td className="py-2 px-4">
                      <select value={row.direction} onChange={(e) => update(idx, { direction: e.target.value })} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500">
@@ -1458,14 +1593,20 @@ function AccuracyStep({ rows, setRows, resultFn, E0, unit, obs, setObs, onBack, 
                   <td className="py-2 px-4 font-mono font-bold text-slate-900 border-l border-slate-100 bg-slate-50/50">{res.complete ? fmt(res.Ec) : "—"}</td>
                   <td className="py-2 px-4 font-mono text-slate-500 border-l border-slate-100">{res.complete ? `±${fmt(res.mpe)}` : "—"}</td>
                   <td className="py-2 px-4"><Badge status={res.complete ? (res.pass ? "pass" : "fail") : "pending"} /></td>
-                  <td className="py-2 px-2 text-right">
-                    <button onClick={() => removeRow(idx)} className="p-1 text-slate-400 hover:text-red-500 rounded"><Minus size={16} /></button>
-                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-4">
+        <button 
+          onClick={addRow} 
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-sm font-bold hover:bg-indigo-100 hover:border-indigo-300 transition-all shadow-sm cursor-pointer"
+        >
+          <Plus size={16} /> Add Row
+        </button>
       </div>
 
       <div className="mt-6 flex items-center justify-between p-4 bg-slate-100 rounded-xl border border-slate-200" style={{ color: '#334155' }}>
@@ -1603,9 +1744,10 @@ function EccentricityStep({ rows, setRows, resultFn, eccLoad, unit, positions, s
   );
 }
 
-function RepeatabilityStep({ blocks, setBlocks, resultFn, unit, cls, repOverall, obs, setObs, onBack, onNext }) {
+function RepeatabilityStep({ maxN, blocks, setBlocks, resultFn, unit, cls, repOverall, obs, setObs, onBack, onNext }) {
   const reps = repsForClass(cls);
   const update = (bIdx, rIdx, patch) => setBlocks((bs) => bs.map((b, i) => i !== bIdx ? b : { ...b, rows: b.rows.map((r, j) => (j === rIdx ? { ...r, ...patch } : r)) }));
+  const updateBlockLoad = (bIdx, newLoad) => setBlocks((bs) => bs.map((b, i) => i !== bIdx ? b : { ...b, load: newLoad }));
 
   return (
     <SectionCard title="Repeatability Test">
@@ -1615,22 +1757,32 @@ function RepeatabilityStep({ blocks, setBlocks, resultFn, unit, cls, repOverall,
 
       <div className="space-y-8">
         {blocks.map((block, bIdx) => {
-          const results = block.rows.map((r) => resultFn(r, block.load));
+          const blockLoad = n(block.load) || (block.label?.toLowerCase().includes("half") ? round(maxN / 2, 2) : maxN);
+          const results = block.rows.map((r) => resultFn(r, blockLoad));
           const complete = results.every((r) => r.complete);
           const errs = results.map((r) => r.E);
           const range = complete ? Math.max(...errs) - Math.min(...errs) : null;
           const mpeVal = results[0] && results[0].complete ? results[0].mpe : null;
-          const pass = complete && results.every((r) => r.pass) && mpeVal !== null && range <= mpeVal + 1e-9;
+          const pass = complete && mpeVal !== null && range <= mpeVal + 1e-9;
 
           return (
             <div key={bIdx} className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-              <div className="bg-slate-100 px-5 py-3 font-black text-slate-800 border-b border-slate-200 uppercase tracking-wider text-sm flex justify-between">
-                <span>{block.label}</span> <span>{fmt(block.load)} {unit}</span>
+              <div className="bg-slate-100 px-5 py-3 font-black text-slate-800 border-b border-slate-200 uppercase tracking-wider text-sm flex justify-between items-center">
+                <span>{block.label}</span>
+                <div className="flex items-center gap-2">
+                  <TextInput 
+                    type="number" 
+                    value={block.load !== undefined ? block.load : blockLoad} 
+                    onChange={(e) => updateBlockLoad(bIdx, e.target.value)} 
+                    className="w-24 text-right px-2 py-1 bg-white border-slate-300 text-slate-800 font-bold" 
+                  />
+                  <span className="text-slate-500">{unit}</span>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                   <thead className="bg-white text-slate-500 font-bold border-b border-slate-100 text-xs">
-                    <tr><th className="py-2 px-4 w-12">#</th><th className="py-2 px-4">I</th><th className="py-2 px-4">ΔL</th><th className="py-2 px-4">E</th><th className="py-2 px-4">Result</th></tr>
+                    <tr><th className="py-2 px-4 w-12">#</th><th className="py-2 px-4">I</th><th className="py-2 px-4">ΔL</th><th className="py-2 px-4">E</th><th className="py-2 px-4">Status</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {block.rows.map((row, rIdx) => {
@@ -1641,7 +1793,13 @@ function RepeatabilityStep({ blocks, setBlocks, resultFn, unit, cls, repOverall,
                           <td className="py-2 px-4"><TextInput type="number" value={row.I} onChange={(e) => update(bIdx, rIdx, { I: e.target.value })} className="w-24" /></td>
                           <td className="py-2 px-4"><TextInput type="number" value={row.deltaL} onChange={(e) => update(bIdx, rIdx, { deltaL: e.target.value })} className="w-24" /></td>
                           <td className="py-2 px-4 font-mono font-bold text-slate-700">{res.complete ? fmt(res.E) : "—"}</td>
-                          <td className="py-2 px-4"><Badge status={res.complete ? (res.pass ? "pass" : "fail") : "pending"} textOverride={res.complete ? "ok" : ""} /></td>
+                          <td className="py-2 px-4">
+                            {res.complete ? 
+                              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Recorded</span> 
+                              : 
+                              <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Pending</span>
+                            }
+                          </td>
                         </tr>
                       );
                     })}
@@ -1796,21 +1954,65 @@ function CertHead({ children }) {
   return <th className="border border-black px-2 py-2 align-middle text-center font-bold bg-slate-100 text-black leading-tight">{children}</th>;
 }
 
-function ReportStep({ instrument, maxN, unit, nIntervals, mpeAtMax, observations,
-  accuracyOverall, discOverall, eccOverall, repOverall, visualOverall, zeroTrackOverall, tareOverall, creepOverall, overallVerdict, onBack
+function ReportStep({ instrument, maxN, minN, eN, dN, nIntervals, unit, mpeAtMax, observations,
+  accuracyOverall, discOverall, eccOverall, repOverall, visualOverall, zeroTrackOverall, tareOverall, creepOverall, overallVerdict, onBack, onSave
 }) {
+  const reportDataRef = useRef(null);
+
+  const downloadDetailedReport = async () => {
+    try {
+      const html2pdfModule = await import('html2pdf.js/dist/html2pdf.bundle.min.js');
+      const html2pdf = html2pdfModule.default || html2pdfModule;
+      const element = reportDataRef.current;
+      if (!element) {
+        alert("Report template not found.");
+        return;
+      }
+      const opt = {
+        margin: [10, 10, 10, 10],
+        filename: `NAWI_Detailed_Report_${instrument.srNo || 'Export'}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      await html2pdf().from(element).set(opt).save();
+    } catch (err) {
+      console.error("Error generating PDF report:", err);
+      alert("Error generating PDF report: " + (err.message || err));
+    }
+  };
+
   const stamped = overallVerdict === "pass" ? "Yes" : overallVerdict === "fail" ? "No" : "Pending";
-  const nextDue = instrument.date ? new Date(new Date(instrument.date).setFullYear(new Date(instrument.date).getFullYear() + 1)).toISOString().slice(0,10) : "—";
+  let nextDue = "—";
+  try {
+    if (instrument.date) {
+      const d = new Date(instrument.date);
+      if (!isNaN(d.getTime())) {
+        d.setFullYear(d.getFullYear() + 1);
+        nextDue = d.toISOString().slice(0, 10);
+      }
+    }
+  } catch (e) {
+    nextDue = "—";
+  }
   
-  const hasObservations = Object.values(observations).some(val => val.trim() !== "");
+  const hasObservations = Boolean(observations) && Object.values(observations).some(val => typeof val === "string" && val.trim() !== "");
 
   return (
     <SectionCard>
       <div className="flex items-center justify-between mb-6 print:hidden border-b pb-4">
         <h2 className="text-2xl font-bold text-slate-800" style={{ color: '#000000' }}>Certificate Preview</h2>
-        <button onClick={() => window.print()} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md">
-          <Printer size={18} /> Print Official PDF
-        </button>
+        <div className="flex flex-wrap gap-3 print:hidden">
+          <button onClick={onSave} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 shadow-sm transition-all cursor-pointer">
+            <Save size={18} /> Save Report to Admin Panel
+          </button>
+          <button onClick={downloadDetailedReport} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 shadow-sm transition-all cursor-pointer">
+            <Download size={18} /> Download whole report
+          </button>
+          <button onClick={() => window.print()} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md cursor-pointer">
+            <Printer size={18} /> Print Official PDF
+          </button>
+        </div>
       </div>
 
       {overallVerdict === "pending" && (
@@ -1900,8 +2102,8 @@ function ReportStep({ instrument, maxN, unit, nIntervals, mpeAtMax, observations
           <div className="mb-6 p-4 border border-black text-xs">
             <div className="font-bold uppercase mb-2">Engineer Remarks & Observations:</div>
             <ul className="list-disc pl-5 space-y-1">
-              {Object.entries(observations).map(([key, val]) => {
-                if(val.trim() === "") return null;
+              {Object.entries(observations || {}).map(([key, val]) => {
+                if (!val || typeof val !== "string" || val.trim() === "") return null;
                 const label = STEPS.find(s => s.id === key)?.label || key;
                 return <li key={key}><b>{label}:</b> {val}</li>;
               })}
@@ -1943,8 +2145,65 @@ function ReportStep({ instrument, maxN, unit, nIntervals, mpeAtMax, observations
         </div>
       </div>
 
-      <div className="mt-8 pt-6 print:hidden">
-        <NavButtons onBack={onBack} onNext={() => window.print()} nextLabel="Print Certificate" backLabel="Back" />
+      <div className="mt-8 pt-6 print:hidden flex flex-wrap items-center justify-between gap-4">
+        <button onClick={onBack} className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 transition-colors flex items-center gap-2 cursor-pointer">
+          <ChevronLeft size={16} /> Back
+        </button>
+        <div className="flex gap-3">
+          <button onClick={onSave} className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer">
+            <Save size={18} /> Save Report
+          </button>
+          <button onClick={() => window.print()} className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer">
+            <Printer size={18} /> Print Certificate <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Hidden Detailed Report for html2pdf - Styled with pure hex colors to prevent html2canvas oklch color parsing errors */}
+      <div className="fixed left-0 top-0 z-[-9999] w-[800px] p-8 font-sans text-sm pointer-events-none" style={{ backgroundColor: '#ffffff', color: '#000000' }} ref={reportDataRef}>
+        <div className="text-center pb-4 mb-6 border-b-2" style={{ borderColor: '#4338ca' }}>
+          <h1 className="text-2xl font-black uppercase" style={{ color: '#1e1b4b' }}>NAWI Detailed Verification Report</h1>
+          <p className="font-bold mt-1" style={{ color: '#475569' }}>Generated by NAWI Verification Suite • OIML R 76 Compliant</p>
+        </div>
+        
+        <h2 className="font-bold p-2 mb-3 uppercase tracking-wider" style={{ backgroundColor: '#f1f5f9', color: '#1e293b' }}>1. Instrument & Test Centre</h2>
+        <div className="grid grid-cols-2 gap-y-2 mb-6 border p-4" style={{ borderColor: '#e2e8f0' }}>
+          <div><strong>Test Centre:</strong> {instrument.labName}</div>
+          <div><strong>Owner/Firm:</strong> {instrument.ownerName}</div>
+          <div><strong>GATC No:</strong> {instrument.gatcNo}</div>
+          <div><strong>Make/Model:</strong> {instrument.make} / {instrument.model}</div>
+          <div><strong>Max Capacity:</strong> {maxN} {unit}</div>
+          <div><strong>Serial No:</strong> {instrument.srNo}</div>
+          <div><strong>Accuracy Class:</strong> {instrument.accuracyClass}</div>
+          <div><strong>Scale Interval (e):</strong> {eN} {unit}</div>
+        </div>
+
+        <h2 className="font-bold p-2 mb-3 uppercase tracking-wider" style={{ backgroundColor: '#f1f5f9', color: '#1e293b' }}>2. Test Results Summary</h2>
+        <table className="w-full border-collapse border mb-6 text-left" style={{ borderColor: '#cbd5e1' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#f8fafc' }}>
+              <th className="border p-2" style={{ borderColor: '#cbd5e1' }}>Test Module</th>
+              <th className="border p-2" style={{ borderColor: '#cbd5e1' }}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td className="border p-2" style={{ borderColor: '#cbd5e1' }}>Visual Examination</td><td className="border p-2 font-bold uppercase" style={{ borderColor: '#cbd5e1' }}>{visualOverall.status}</td></tr>
+            <tr><td className="border p-2" style={{ borderColor: '#cbd5e1' }}>Zero Tracking</td><td className="border p-2 font-bold uppercase" style={{ borderColor: '#cbd5e1' }}>{zeroTrackOverall.status}</td></tr>
+            <tr><td className="border p-2" style={{ borderColor: '#cbd5e1' }}>Eccentricity</td><td className="border p-2 font-bold uppercase" style={{ borderColor: '#cbd5e1' }}>{eccOverall.status}</td></tr>
+            <tr><td className="border p-2" style={{ borderColor: '#cbd5e1' }}>Repeatability</td><td className="border p-2 font-bold uppercase" style={{ borderColor: '#cbd5e1' }}>{repOverall.status}</td></tr>
+            <tr><td className="border p-2" style={{ borderColor: '#cbd5e1' }}>Accuracy / Linearity</td><td className="border p-2 font-bold uppercase" style={{ borderColor: '#cbd5e1' }}>{accuracyOverall.status}</td></tr>
+            <tr><td className="border p-2" style={{ borderColor: '#cbd5e1' }}>Discrimination</td><td className="border p-2 font-bold uppercase" style={{ borderColor: '#cbd5e1' }}>{discOverall.status}</td></tr>
+            <tr><td className="border p-2" style={{ borderColor: '#cbd5e1' }}>Creep & Zero Return</td><td className="border p-2 font-bold uppercase" style={{ borderColor: '#cbd5e1' }}>{creepOverall.status}</td></tr>
+            <tr><td className="border p-2" style={{ borderColor: '#cbd5e1' }}>Tare Device</td><td className="border p-2 font-bold uppercase" style={{ borderColor: '#cbd5e1' }}>{tareOverall.status}</td></tr>
+          </tbody>
+        </table>
+
+        <h2 className="font-bold p-2 mb-3 uppercase tracking-wider" style={{ backgroundColor: '#f1f5f9', color: '#1e293b' }}>3. Final Metrological Verdict</h2>
+        <div className="border-2 p-4 text-center mt-4" style={{ borderColor: '#1e293b' }}>
+          <div className="text-lg">Overall Instrument Compliance Status:</div>
+          <div className="text-3xl font-black uppercase mt-2">{overallVerdict}</div>
+          <div className="text-xs mt-4">Date of Verification: {instrument.date} | Inspector: {instrument.calibrationEngineer}</div>
+        </div>
       </div>
     </SectionCard>
   );
