@@ -492,85 +492,106 @@ export function VerificationSuite() {
 
   const [editingCert, setEditingCert] = useState(null);
 
-  const [step, setStep] = useState("setup");
+  const loadSessionSuite = () => {
+    try {
+      const saved = sessionStorage.getItem('nawi-session-suite');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const initialSession = useRef(loadSessionSuite()).current;
+
+  const [step, setStep] = useState(initialSession?.step || "setup");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const fileInputRef = useRef(null);
 
-  // State Persistence
-  const [instrument, setInstrument] = useState(() => {
-    const saved = localStorage.getItem('nawi-instrument');
-    return saved ? JSON.parse(saved) : DEFAULT_INSTRUMENT;
-  });
-  const [observations, setObservations] = useState(() => {
-    const saved = localStorage.getItem('nawi-obs');
-    return saved ? JSON.parse(saved) : DEFAULT_OBS;
-  });
-  const [visualChecklist, setVisualChecklist] = useState(() => {
-    const saved = localStorage.getItem('nawi-visual');
-    return saved ? JSON.parse(saved) : VISUAL_ITEMS.map((label, i) => ({ id: i, label, value: "" }));
-  });
-  const [zeroTest, setZeroTest] = useState(() => {
-    const saved = localStorage.getItem('nawi-zero');
-    return saved ? JSON.parse(saved) : { load: "", I: "", deltaL: "" };
-  });
-  const [zeroTrack, setZeroTrack] = useState(() => {
-    const saved = localStorage.getItem('nawi-zerotrack');
-    return saved ? JSON.parse(saved) : { settingReadings: ["", "", ""], trackingRangeObserved: "" };
-  });
-  const [accuracyRows, setAccuracyRows] = useState(() => {
-    const saved = localStorage.getItem('nawi-accuracy');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [discRows, setDiscRows] = useState(() => {
-    const saved = localStorage.getItem('nawi-disc');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [eccRows, setEccRows] = useState(() => {
-    const saved = localStorage.getItem('nawi-ecc');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [eccLoad, setEccLoad] = useState(() => {
-    const saved = localStorage.getItem('nawi-ecc-load');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [eccPositions, setEccPositions] = useState(4);
-  const [repBlocks, setRepBlocks] = useState(() => {
-    const saved = localStorage.getItem('nawi-rep');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [creepTest, setCreepTest] = useState(() => {
-    const saved = localStorage.getItem('nawi-creep');
-    return saved ? JSON.parse(saved) : { load: "", I0: "", I15: "", I30: "", I240: "", zeroBefore: "", zeroAfter: "" };
-  });
-  const [tareTest, setTareTest] = useState(() => {
-    const saved = localStorage.getItem('nawi-tare');
-    return saved ? JSON.parse(saved) : { tareLoad: "", zeroAfterTare: "", testLoad: "", I: "", deltaL: "" };
-  });
+  // In-Progress Inspection State (using sessionStorage per spec Requirement 3)
+  const [instrument, setInstrument] = useState(initialSession?.instrument || DEFAULT_INSTRUMENT);
+  const [observations, setObservations] = useState(initialSession?.observations || DEFAULT_OBS);
+  const [visualChecklist, setVisualChecklist] = useState(
+    initialSession?.visualChecklist || VISUAL_ITEMS.map((label, i) => ({ id: i, label, value: "" }))
+  );
+  const [zeroTest, setZeroTest] = useState(initialSession?.zeroTest || { load: "", I: "", deltaL: "" });
+  const [zeroTrack, setZeroTrack] = useState(
+    initialSession?.zeroTrack || { settingReadings: ["", "", ""], trackingRangeObserved: "" }
+  );
+  const [accuracyRows, setAccuracyRows] = useState(initialSession?.accuracyRows || null);
+  const [discRows, setDiscRows] = useState(initialSession?.discRows || null);
+  const [eccRows, setEccRows] = useState(initialSession?.eccRows || null);
+  const [eccLoad, setEccLoad] = useState(initialSession?.eccLoad || null);
+  const [eccPositions, setEccPositions] = useState(initialSession?.eccPositions || 4);
+  const [repBlocks, setRepBlocks] = useState(initialSession?.repBlocks || null);
+  const [creepTest, setCreepTest] = useState(
+    initialSession?.creepTest || { load: "", I0: "", I15: "", I30: "", I240: "", zeroBefore: "", zeroAfter: "" }
+  );
+  const [tareTest, setTareTest] = useState(
+    initialSession?.tareTest || { tareLoad: "", zeroAfterTare: "", testLoad: "", I: "", deltaL: "" }
+  );
 
   useEffect(() => {
-    localStorage.setItem('nawi-clients', JSON.stringify(clients));
-    localStorage.setItem('nawi-instrument', JSON.stringify(instrument));
-    localStorage.setItem('nawi-obs', JSON.stringify(observations));
-    localStorage.setItem('nawi-visual', JSON.stringify(visualChecklist));
-    localStorage.setItem('nawi-zero', JSON.stringify(zeroTest));
-    localStorage.setItem('nawi-zerotrack', JSON.stringify(zeroTrack));
-    localStorage.setItem('nawi-creep', JSON.stringify(creepTest));
-    localStorage.setItem('nawi-tare', JSON.stringify(tareTest));
-    if (accuracyRows) localStorage.setItem('nawi-accuracy', JSON.stringify(accuracyRows));
-    if (discRows) localStorage.setItem('nawi-disc', JSON.stringify(discRows));
-    if (eccRows) localStorage.setItem('nawi-ecc', JSON.stringify(eccRows));
-    if (eccLoad) localStorage.setItem('nawi-ecc-load', JSON.stringify(eccLoad));
-  }, [clients, instrument, observations, visualChecklist, zeroTest, zeroTrack, creepTest, tareTest, accuracyRows, discRows, eccRows, eccLoad, repBlocks]);
+    const payload = {
+      step,
+      instrument,
+      observations,
+      visualChecklist,
+      zeroTest,
+      zeroTrack,
+      accuracyRows,
+      discRows,
+      eccRows,
+      eccLoad,
+      eccPositions,
+      repBlocks,
+      creepTest,
+      tareTest,
+    };
+    sessionStorage.setItem("nawi-session-suite", JSON.stringify(payload));
+  }, [
+    step,
+    instrument,
+    observations,
+    visualChecklist,
+    zeroTest,
+    zeroTrack,
+    accuracyRows,
+    discRows,
+    eccRows,
+    eccLoad,
+    eccPositions,
+    repBlocks,
+    creepTest,
+    tareTest,
+  ]);
 
   // Sync clients from localStorage whenever view mode or user changes
   useEffect(() => {
-    const saved = localStorage.getItem('nawi-clients');
+    const saved = localStorage.getItem("nawi-clients");
     if (saved) {
       try {
         setClients(JSON.parse(saved));
       } catch (e) {}
     }
-  }, [viewMode, user]);
+  }, [user]);
+
+  const resetInspectionSession = () => {
+    sessionStorage.removeItem("nawi-session-suite");
+    setStep("setup");
+    setInstrument(DEFAULT_INSTRUMENT);
+    setObservations(DEFAULT_OBS);
+    setVisualChecklist(VISUAL_ITEMS.map((label, i) => ({ id: i, label, value: "" })));
+    setZeroTest({ load: "", I: "", deltaL: "" });
+    setZeroTrack({ settingReadings: ["", "", ""], trackingRangeObserved: "" });
+    setAccuracyRows(null);
+    setDiscRows(null);
+    setEccRows(null);
+    setEccLoad(null);
+    setEccPositions(4);
+    setRepBlocks(null);
+    setCreepTest({ load: "", I0: "", I15: "", I30: "", I240: "", zeroBefore: "", zeroAfter: "" });
+    setTareTest({ tareLoad: "", zeroAfterTare: "", testLoad: "", I: "", deltaL: "" });
+  };
 
   const updateObs = (key) => (val) => setObservations(prev => ({...prev, [key]: val}));
 
@@ -1100,6 +1121,7 @@ export function VerificationSuite() {
       return updatedClients;
     });
 
+    sessionStorage.removeItem("nawi-session-suite");
     alert(`Report & Certificate (${certNumber}) saved successfully! The report information has been added to the Admin Panel.`);
   };
 
@@ -1224,13 +1246,16 @@ export function VerificationSuite() {
         </div>
 
         <div className="p-4 border-t border-slate-800 flex flex-col gap-2">
+           <button onClick={resetInspectionSession} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-900 rounded-lg hover:bg-emerald-900 transition-colors cursor-pointer">
+              <Plus size={14} /> Start New Inspection
+           </button>
            <button onClick={loadDemoData} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-slate-800 text-indigo-400 rounded-lg hover:bg-slate-700 transition-colors">
               <Zap size={14} /> Demo Data
            </button>
            <button onClick={clearData} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-slate-800 text-red-400 rounded-lg hover:bg-slate-700 transition-colors">
               <Trash2 size={14} /> Reset Forms
            </button>
-           {(user?.role === "admin" || user?.email?.toLowerCase() === "ilmchikhli@gmail.com") && (
+           {user?.role === "admin" && (
              <button onClick={() => navigate("/admin/dashboard")} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold bg-indigo-950 text-indigo-300 border border-indigo-900 rounded-lg hover:bg-indigo-900 transition-colors cursor-pointer">
                 <Users size={14} /> Admin Panel
              </button>
@@ -2206,7 +2231,7 @@ function ProtectedRoute({ children, requiredRole }) {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
-  if (requiredRole === "admin" && (user?.role !== "admin" || user?.email !== "ilmchikhli@gmail.com")) {
+  if (requiredRole === "admin" && user?.role !== "admin") {
     return <Navigate to="/verification" replace />;
   }
   return children;
