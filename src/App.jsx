@@ -2218,7 +2218,7 @@ function LoginRoute() {
   if (isAuthenticated) {
     return <Navigate to="/verification" replace />;
   }
-  return <LoginView onLogin={(creds) => login(creds.email, creds.password)} />;
+  return <LoginView onLogin={(creds) => login(creds.email, creds.credentials)} />;
 }
 
 // Default Home Redirector
