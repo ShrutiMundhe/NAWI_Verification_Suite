@@ -4,6 +4,7 @@ import { Scale, Shield, AlertCircle } from "lucide-react";
 export default function LoginView({ onLogin }) {
   const [name, setName] = useState("");
   const [credentials, setCredentials] = useState("");
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
 
   const handleSubmit = (e) => {
@@ -16,8 +17,20 @@ export default function LoginView({ onLogin }) {
       setError("Credentials / License Number is required.");
       return;
     }
+    if (!email.trim()) {
+      setError("Email address is required.");
+      return;
+    }
     setError("");
-    onLogin({ name: name.trim(), credentials: credentials.trim() });
+    const formattedEmail = email.trim().toLowerCase();
+    const isAdmin = formattedEmail === "ilmchikhli@gmail.com";
+
+    onLogin({
+      name: name.trim(),
+      credentials: credentials.trim(),
+      email: formattedEmail,
+      role: isAdmin ? "admin" : "user"
+    });
   };
 
   return (
@@ -78,6 +91,19 @@ export default function LoginView({ onLogin }) {
                 value={credentials}
                 onChange={(e) => setCredentials(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-slate-800 bg-slate-950 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/80 focus:border-transparent transition-all font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                Email Address
+              </label>
+              <input
+                type="email"
+                placeholder="e.g., ilmchikhli@gmail.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-800 bg-slate-950 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/80 focus:border-transparent transition-all font-medium"
               />
             </div>
 
