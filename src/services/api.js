@@ -59,8 +59,114 @@ export const authService = {
     return response.data;
   },
   verifyToken: async () => {
-    const response = await API.post("/auth/verify");
+    const response = await API.get("/auth/me");
     return response.data;
+  },
+  changePassword: async (currentPassword, newPassword) => {
+    const response = await API.patch("/auth/password", { currentPassword, newPassword });
+    return response.data;
+  },
+};
+
+/* ================================================================= */
+/* Invite Services                                                   */
+/* ================================================================= */
+
+export const inviteService = {
+  createInvite: async (name, email, role) => {
+    try {
+      const response = await API.post("/invites", { name, email, role });
+      return response.data;
+    } catch (e) {
+      if (e.status === 409) throw e;
+      // Local fallback simulation
+      const code = Math.random().toString(36).substring(2, 18);
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const newInvite = {
+        _id: "inv_" + Date.now(),
+        code,
+        name,
+        email: email.toLowerCase().trim(),
+        role: role || "engineer",
+        expiresAt,
+        used: false,
+        createdAt: new Date().toISOString(),
+      };
+      let invites = [];
+      try {
+        invites = JSON.parse(localStorage.getItem("nawi-invites") || "[]");
+      } catch (err) {}
+      
+      // Check 409 in local invites
+      const dup = invites.find(i => i.email === email.toLowerCase().trim() && !i.used && new Date(i.expiresAt) > new Date());
+      if (dup) {
+        const conflictErr = new Error("An active pending invite for this email address already exists.");
+        conflictErr.status = 409;
+        throw conflictErr;
+      }
+      
+      invites.unshift(newInvite);
+      localStorage.setItem("nawi-invites", JSON.stringify(invites));
+      return { message: "Invite created successfully.", invite: newInvite, code, expiresAt };
+    }
+  },
+  listInvites: async () => {
+    try {
+      const response = await API.get("/invites");
+      return response.data;
+    } catch (e) {
+      let invites = [];
+      try {
+        invites = JSON.parse(localStorage.getItem("nawi-invites") || "[]");
+      } catch (err) {}
+      return { invites };
+    }
+  },
+  validateInvite: async (code) => {
+    try {
+      const response = await API.get(`/invites/${code}/validate`);
+      return response.data;
+    } catch (e) {
+      let invites = [];
+      try {
+        invites = JSON.parse(localStorage.getItem("nawi-invites") || "[]");
+      } catch (err) {}
+      const found = invites.find((i) => i.code === code);
+      if (!found) return { valid: false, message: "Invalid invite code." };
+      if (found.used) return { valid: false, message: "This invite code has already been used." };
+      if (new Date() > new Date(found.expiresAt)) return { valid: false, message: "This invite code has expired." };
+      return { valid: true, invite: { name: found.name, email: found.email, role: found.role, expiresAt: found.expiresAt } };
+    }
+  },
+  acceptInvite: async (code, password, name) => {
+    try {
+      const response = await API.post(`/invites/${code}/accept`, { password, name });
+      return response.data;
+    } catch (e) {
+      if (e.status === 400 || e.status === 409) throw e;
+      // Local fallback simulation
+      let invites = [];
+      try {
+        invites = JSON.parse(localStorage.getItem("nawi-invites") || "[]");
+      } catch (err) {}
+      const found = invites.find((i) => i.code === code);
+      if (!found || found.used || new Date() > new Date(found.expiresAt)) {
+        throw new Error("Invalid or expired invite code.");
+      }
+      found.used = true;
+      found.usedAt = new Date().toISOString();
+      localStorage.setItem("nawi-invites", JSON.stringify(invites));
+
+      const mockUser = {
+        id: "u_" + Date.now(),
+        name: name || found.name,
+        email: found.email,
+        role: found.role,
+        mustChangePassword: false,
+      };
+      localStorage.setItem("nawi_local_user", JSON.stringify(mockUser));
+      return { message: "Account created successfully.", token: "mock_token_" + Date.now(), user: mockUser };
+    }
   },
 };
 

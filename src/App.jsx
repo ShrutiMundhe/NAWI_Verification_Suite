@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { generateStructuredVectorPDF } from "./Components/PDFExport/generateVectorPDF.js";
 import LoginView from "./Components/LoginView.jsx";
+import SignupView from "./Components/SignupView.jsx";
+import ForcePasswordChangeView from "./Components/ForcePasswordChangeView.jsx";
 import {
   Scale,
   CheckCircle2,
@@ -2343,7 +2345,7 @@ function ReportStep({ instrument, maxN, minN, eN, dN, nIntervals, unit, mpeAtMax
 
 // Protected Route Guard
 function ProtectedRoute({ children, requiredRole }) {
-  const { isAuthenticated, user, isLoading } = useAuth();
+  const { isAuthenticated, user, isLoading, updateUser } = useAuth();
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
@@ -2354,6 +2356,13 @@ function ProtectedRoute({ children, requiredRole }) {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
+  if (user?.mustChangePassword) {
+    return (
+      <ForcePasswordChangeView
+        onPasswordChanged={() => updateUser({ ...user, mustChangePassword: false })}
+      />
+    );
+  }
   if (requiredRole === "admin" && user?.role !== "admin") {
     return <Navigate to="/verification" replace />;
   }
@@ -2362,8 +2371,31 @@ function ProtectedRoute({ children, requiredRole }) {
 
 // Login Route wrapper to handle login transition or auto-redirection if authenticated
 function LoginRoute() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, user, login, updateUser } = useAuth();
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const inviteCode = searchParams.get("code");
+
+  if (inviteCode) {
+    return (
+      <SignupView
+        code={inviteCode}
+        onLoginSuccess={(userData) => {
+          updateUser(userData);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }}
+      />
+    );
+  }
+
   if (isAuthenticated) {
+    if (user?.mustChangePassword) {
+      return (
+        <ForcePasswordChangeView
+          onPasswordChanged={() => updateUser({ ...user, mustChangePassword: false })}
+        />
+      );
+    }
     return <Navigate to="/verification" replace />;
   }
   return <LoginView onLogin={(creds) => login(creds.email, creds.credentials, creds)} />;
@@ -2371,16 +2403,54 @@ function LoginRoute() {
 
 // Default Home Redirector
 function HomeRedirect() {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? (
-    <Navigate to="/verification" replace />
-  ) : (
-    <Navigate to="/login" replace />
-  );
+  const { isAuthenticated, user, updateUser } = useAuth();
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const inviteCode = searchParams.get("code");
+
+  if (inviteCode) {
+    return (
+      <SignupView
+        code={inviteCode}
+        onLoginSuccess={(userData) => {
+          updateUser(userData);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }}
+      />
+    );
+  }
+
+  if (isAuthenticated) {
+    if (user?.mustChangePassword) {
+      return (
+        <ForcePasswordChangeView
+          onPasswordChanged={() => updateUser({ ...user, mustChangePassword: false })}
+        />
+      );
+    }
+    return <Navigate to="/verification" replace />;
+  }
+  return <Navigate to="/login" replace />;
 }
 
 // Main App Component with router bindings
 export default function App() {
+  const searchParams = new URLSearchParams(window.location.search);
+  const inviteCode = searchParams.get("code");
+  const { updateUser } = useAuth();
+
+  if (inviteCode) {
+    return (
+      <SignupView
+        code={inviteCode}
+        onLoginSuccess={(userData) => {
+          updateUser(userData);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }}
+      />
+    );
+  }
+
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />

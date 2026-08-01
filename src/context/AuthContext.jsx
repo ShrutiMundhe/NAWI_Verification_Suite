@@ -30,7 +30,7 @@ export function AuthProvider({ children }) {
         } else {
           try {
             const data = await authService.verifyToken();
-            if (data && data.valid) {
+            if (data && data.user) {
               setUser(data.user);
               setToken(storedToken);
             } else {
@@ -68,7 +68,7 @@ export function AuthProvider({ children }) {
     setError(null);
     try {
       const data = await authService.login(email, password);
-      if (data.success && data.token) {
+      if (data.token) {
         localStorage.setItem("nawi_auth_token", data.token);
         setUser(data.user);
         setToken(data.token);
@@ -82,9 +82,10 @@ export function AuthProvider({ children }) {
       const localUser = {
         id: "local_" + Date.now(),
         email: formattedEmail,
-        username: extraData.name || extraData.username || formattedEmail.split("@")[0] || "Technician",
-        role: isAdmin ? "admin" : "user",
+        name: extraData.name || extraData.username || formattedEmail.split("@")[0] || "Technician",
+        role: isAdmin ? "admin font-bold" : "user",
         credentials: extraData.credentials || "",
+        mustChangePassword: false
       };
       const dummyToken = "local_token_" + Date.now();
       localStorage.setItem("nawi_auth_token", dummyToken);
@@ -101,9 +102,12 @@ export function AuthProvider({ children }) {
     setError(null);
     try {
       const data = await authService.register(email, password, username);
-      if (data.success) {
-        // Auto-login after successful registration
-        return await login(email, password);
+      if (data.token) {
+        localStorage.setItem("nawi_auth_token", data.token);
+        setUser(data.user);
+        setToken(data.token);
+        setIsLoading(false);
+        return data;
       }
     } catch (err) {
       setError(err.message || "Registration failed");
@@ -117,7 +121,7 @@ export function AuthProvider({ children }) {
     try {
       await authService.logout();
     } catch (err) {
-      // Ignore network errors on logout and proceed with local clearance
+      // Ignore network errors on logout
     } finally {
       handleLogoutState();
       setIsLoading(false);
@@ -128,7 +132,7 @@ export function AuthProvider({ children }) {
   const verifyToken = async () => {
     try {
       const data = await authService.verifyToken();
-      if (data && data.valid) {
+      if (data && data.user) {
         setUser(data.user);
         return true;
       }
@@ -140,13 +144,22 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const updateUser = (userData) => {
+    setUser(userData);
+    if (localStorage.getItem("nawi_local_user")) {
+      localStorage.setItem("nawi_local_user", JSON.stringify(userData));
+    }
+  };
+
   const isAuthenticated = !!token && !!user;
-  const isAdmin = isAuthenticated && user?.role === "admin" && user?.email === ADMIN_EMAIL;
+  const isAdmin = isAuthenticated && user?.role === "admin";
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        setUser,
+        updateUser,
         token,
         isLoading,
         error,
