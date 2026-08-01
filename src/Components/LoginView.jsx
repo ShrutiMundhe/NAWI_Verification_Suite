@@ -74,7 +74,7 @@ export default function LoginView({ onLogin }) {
               </label>
               <input
                 type="text"
-                placeholder="e.g., Dhananjay Muley"
+                placeholder="Enter your name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-slate-800 bg-slate-950 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/80 focus:border-transparent transition-all font-medium"
@@ -87,7 +87,7 @@ export default function LoginView({ onLogin }) {
               </label>
               <input
                 type="text"
-                placeholder="e.g., LIC-MH-2026-8942"
+                placeholder="Enter your license no"
                 value={credentials}
                 onChange={(e) => setCredentials(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-slate-800 bg-slate-950 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/80 focus:border-transparent transition-all font-mono"
@@ -100,7 +100,7 @@ export default function LoginView({ onLogin }) {
               </label>
               <input
                 type="email"
-                placeholder="e.g., ilmchikhli@gmail.com"
+                placeholder="Enter your mail id"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-slate-800 bg-slate-950 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/80 focus:border-transparent transition-all font-medium"
