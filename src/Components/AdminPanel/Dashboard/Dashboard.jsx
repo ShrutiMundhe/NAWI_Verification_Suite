@@ -103,7 +103,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Pie Chart: Reports by Accuracy Class */}
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-          <h3 className="text-md font-bold text-slate-800 mb-6">Reports by Accuracy Class</h3>
+          <h3 className="text-lg font-extrabold text-slate-900 mb-6">Reports by Accuracy Class</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -129,7 +129,7 @@ export default function Dashboard() {
 
         {/* Bar Chart: Reports by Verdict */}
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-          <h3 className="text-md font-bold text-slate-800 mb-6">Reports by Verdict</h3>
+          <h3 className="text-lg font-extrabold text-slate-900 mb-6">Reports by Verdict</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={verdictChartData}>
@@ -147,7 +147,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         {/* Recent Reports Table */}
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <h3 className="text-md font-bold text-slate-800 mb-4">Recent Reports</h3>
+          <h3 className="text-lg font-extrabold text-slate-900 mb-4">Recent Reports</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left text-slate-600">
               <thead className="text-xs text-slate-400 bg-slate-50 uppercase">
@@ -178,7 +178,7 @@ export default function Dashboard() {
 
         {/* Recent Audit Logs Table */}
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <h3 className="text-md font-bold text-slate-800 mb-4">Recent System Logs</h3>
+          <h3 className="text-lg font-extrabold text-slate-900 mb-4">Recent System Logs</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left text-slate-600">
               <thead className="text-xs text-slate-400 bg-slate-50 uppercase">

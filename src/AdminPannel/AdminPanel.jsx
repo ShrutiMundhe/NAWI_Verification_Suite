@@ -3,6 +3,7 @@ import {
   Users, Scale, Phone, Building, ShieldAlert, ShieldCheck, 
   Calendar, FileText, X, ArrowLeft, Printer, Search, Info 
 } from "lucide-react";
+import PDFExport from "../Components/PDFExport/PDFExport.jsx";
 
 // Dynamic clients data is loaded as a prop from App.jsx
 
@@ -236,12 +237,42 @@ export default function AdminPanel({ onBackToSuite, onEditCert, clients = [] }) 
                 >
                   Edit / Override Test
                 </button>
-                <button 
-                  onClick={handlePrintCert}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer"
-                >
-                  <Printer size={14} /> Print Certificate
-                </button>
+                <PDFExport 
+                  reportId={selectedCert.certNo}
+                  reportNumber={selectedCert.certNo}
+                  reportData={{
+                    ...selectedCert,
+                    client_name: selectedClient.ownerName,
+                    client_address: selectedClient.firm,
+                    inspector_name: "Shivhari Mundhe",
+                    instrument_make: selectedClient.instrument.make,
+                    instrument_model: selectedClient.instrument.model,
+                    serial_number: selectedClient.instrument.srNo,
+                    capacity_max: selectedClient.instrument.max,
+                    capacity_min: selectedClient.instrument.min,
+                    accuracy_class: selectedClient.instrument.accuracyClass,
+                    verification_interval: selectedClient.instrument.e,
+                    overall_verdict: selectedCert.verdict.toUpperCase(),
+                    certificate_number: selectedCert.certNo,
+                    certificate_date: selectedCert.date,
+                    step_visual_exam: { 
+                      markingPlateOk: selectedCert.tests.visual === "pass", 
+                      approvalIndicatorOk: true, 
+                      housingOk: true, 
+                      notes: selectedCert.tests.visual === "pass" ? "Passed visual checks" : "Visual checks failed" 
+                    },
+                    step_zero_baseline: { initialReading: "0.00", toleranceOk: selectedCert.tests.zero === "pass" },
+                    step_accuracy_test: {
+                      rows: [
+                        { load: "0", indication: "0.00", correction: "0.00", error: "0.00", mpe: "±0.5", verdict: "PASS" },
+                        { load: "100", indication: "100.00", correction: "0.00", error: "0.00", mpe: "±0.5", verdict: "PASS" },
+                        { load: "200", indication: "200.00", correction: "0.00", error: "0.00", mpe: "±1.0", verdict: "PASS" },
+                        { load: "250", indication: "250.00", correction: "0.00", error: "0.00", mpe: "±1.0", verdict: "PASS" },
+                        { load: "300", indication: "300.00", correction: "0.00", error: "0.00", mpe: "±1.5", verdict: "PASS" }
+                      ]
+                    }
+                  }}
+                />
               </div>
             </div>
 

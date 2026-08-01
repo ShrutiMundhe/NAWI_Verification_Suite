@@ -233,7 +233,7 @@ export default function ReportsList() {
                       >
                         <Trash2 size={16} />
                       </button>
-                      <PDFExport reportId={r._id} reportNumber={r.report_number} />
+                      <PDFExport reportId={r._id} reportNumber={r.report_number} reportData={r} />
                     </td>
                   </tr>
                 ))}

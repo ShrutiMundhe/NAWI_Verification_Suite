@@ -53,9 +53,8 @@ export default function AdminLayout() {
       >
         <div>
           {/* Logo Brand */}
-          <div className="p-6 border-b border-slate-800 flex items-center gap-3">
-            <Scale className="text-indigo-400" size={28} />
-            <span className="font-extrabold text-white text-lg tracking-wide uppercase">Admin Portal</span>
+          <div className="p-6 py-7 border-b border-slate-800 flex items-center justify-start">
+            <img src="/Icon.png" alt="Logo" className="h-20 w-auto max-w-[210px] object-contain rounded-xl drop-shadow-lg" />
           </div>
 
           {/* Navigation Links */}
@@ -108,7 +107,7 @@ export default function AdminLayout() {
         {/* Top Header bar */}
         <header className="bg-white border-b px-8 py-4 flex items-center justify-between shadow-sm">
           <div>
-            <h1 className="text-xl font-bold text-slate-800">
+            <h1 className="text-2xl font-black tracking-tight" style={{ color: "#0f172a" }}>
               {navigationItems.find((item) => item.path === location.pathname)?.label || "Administration"}
             </h1>
           </div>
