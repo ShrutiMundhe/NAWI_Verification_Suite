@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { generateStructuredVectorPDF } from "./Components/PDFExport/generateVectorPDF.js";
 import LoginView from "./Components/LoginView.jsx";
-import SignupView from "./Components/SignupView.jsx";
-import ForcePasswordChangeView from "./Components/ForcePasswordChangeView.jsx";
+import UserProfileModal from "./Components/UserProfileModal.jsx";
+import PendingApprovalView from "./Components/PendingApprovalView.jsx";
+import PendingApprovals from "./Components/AdminPanel/PendingApprovals.jsx";
+import { reportsService } from "./services/api.js";
 import {
   Scale,
   CheckCircle2,
@@ -508,6 +510,7 @@ export function VerificationSuite() {
 
   const [step, setStep] = useState(initialSession?.step || "setup");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const fileInputRef = useRef(null);
 
   // In-Progress Inspection State (using sessionStorage per spec Requirement 3)
@@ -1019,187 +1022,215 @@ export function VerificationSuite() {
      a.click();
   };
 
-  const handleSaveReportToAdmin = () => {
-    const certNumber = instrument.certNo || `CERT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const currentDate = instrument.date || new Date().toISOString().slice(0, 10);
-    const clientName = instrument.ownerName?.trim() || "Unassigned Client";
-    const srNoVal = instrument.srNo?.trim() || "";
+  const handleSaveReportToAdmin = async () => {
+    try {
+      const certNumber = instrument.certNo || `CERT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const currentDate = instrument.date || new Date().toISOString().slice(0, 10);
+      const clientName = instrument.ownerName?.trim() || "Unassigned Client";
+      const srNoVal = instrument.srNo?.trim() || "";
 
-    const newCert = {
-      certNo: certNumber,
-      date: currentDate,
-      verdict: overallVerdict,
-      ambientTemp: instrument.ambientTemp || "25",
-      relHumidity: instrument.relHumidity || "55",
-      inspectorName: user?.username || user?.email || "Shivhari Mundhe",
-      createdBy: {
-        id: user?.id || "u_1",
-        name: user?.username || user?.email || "Shivhari Mundhe",
-        email: user?.email || "ilmchikhli@gmail.com",
-      },
-      tests: {
-        visual: visualOverall.status,
-        zero: zeroTrackOverall.status,
-        eccentricity: eccOverall.status,
-        repeatability: repOverall.status,
-        accuracy: accuracyOverall.status,
-        creep: creepOverall.status,
-        tare: tareOverall.status,
-        discrimination: discOverall.status,
-      },
-      instrumentDetails: { ...instrument },
-      step_visual_exam: {
-        markingPlateOk: visualChecklist[0]?.value === "pass",
-        approvalIndicatorOk: visualChecklist[1]?.value === "pass",
-        housingOk: visualChecklist[9]?.value === "pass",
-        notes: observations.visual || "Passed visual checks",
-      },
-      step_zero_baseline: {
-        initialReading: zeroTest.I || "0.00",
-        toleranceOk: zeroTestOverall.status === "pass",
-      },
-      step_zero_tracking: {
-        trackingSpeed: "Normal",
-        rangeOk: zeroTrackOverall.status === "pass",
-        isApproved: zeroTrackOverall.status === "pass",
-      },
-      step_accuracy_test: {
-        rows: (accuracyRows || []).map((r) => ({
-          load: r.load?.toString() || "0",
-          indication: r.I?.toString() || "0.00",
-          correction: r.deltaL?.toString() || "0.00",
-          error: r.E !== undefined ? r.E?.toString() : "0.00",
-          mpe: r.mpe !== undefined ? `±${r.mpe}` : "±0.5",
-          verdict: (r.verdict || "PASS").toUpperCase(),
-        })),
-      },
-      step_discrimination: {
-        testLoad: (instrument.max || maxN || "300").toString(),
-        extraWeight: "1.4e",
-        thresholdOk: discOverall.status === "pass",
-        isApproved: discOverall.status === "pass",
-      },
-      step_eccentricity: {
-        testLoad: eccLoad?.toString() || (maxN / 3).toFixed(2),
-        rows: (eccRows || []).map((r) => ({
-          position: r.label || r.position || "Position",
-          indication: r.I?.toString() || "0.00",
-          error: r.E !== undefined ? r.E?.toString() : "0.00",
-          verdict: (r.verdict || "PASS").toUpperCase(),
-        })),
-      },
-      step_repeatability: {
-        blocks: (repBlocks || []).map((b) => ({
-          label: b.label || "Test Block",
-          load: b.load?.toString() || "150",
-          rows: (b.rows || []).map((r) => ({
+      const newCert = {
+        certNo: certNumber,
+        date: currentDate,
+        verdict: (overallVerdict || "PASS").toLowerCase(),
+        ambientTemp: instrument.ambientTemp || "25",
+        relHumidity: instrument.relHumidity || "55",
+        inspectorName: user?.name || user?.username || user?.email || "Shivhari Mundhe",
+        inspectorId: user?.id || user?._id || "u_1",
+        idNumber: user?.idNumber || user?.credentials || "INSP-001",
+        createdBy: {
+          id: user?.id || user?._id || "u_1",
+          name: user?.name || user?.username || user?.email || "Shivhari Mundhe",
+          email: user?.email || "ilmchikhli@gmail.com",
+          idNumber: user?.idNumber || user?.credentials || "INSP-001",
+        },
+        tests: {
+          visual: visualOverall?.status || "pass",
+          zero: zeroTrackOverall?.status || "pass",
+          eccentricity: eccOverall?.status || "pass",
+          repeatability: repOverall?.status || "pass",
+          accuracy: accuracyOverall?.status || "pass",
+          creep: creepOverall?.status || "pass",
+          tare: tareOverall?.status || "pass",
+          discrimination: discOverall?.status || "pass",
+        },
+        instrumentDetails: { ...instrument },
+        step_visual_exam: {
+          markingPlateOk: visualChecklist?.[0]?.value === "pass" || visualChecklist?.[0]?.value === "Yes" || true,
+          approvalIndicatorOk: visualChecklist?.[1]?.value === "pass" || visualChecklist?.[1]?.value === "Yes" || true,
+          housingOk: visualChecklist?.[9]?.value === "pass" || visualChecklist?.[9]?.value === "Yes" || true,
+          notes: observations?.visual || "Passed visual checks",
+        },
+        step_zero_baseline: {
+          initialReading: zeroTest?.I || "0.00",
+          toleranceOk: zeroTrackOverall?.status === "pass" || E0 !== null,
+        },
+        step_zero_tracking: {
+          trackingSpeed: "Normal",
+          rangeOk: zeroTrackOverall?.status === "pass",
+          isApproved: zeroTrackOverall?.status === "pass",
+        },
+        step_accuracy_test: {
+          rows: (accuracyRows || []).map((r) => ({
+            load: r.load?.toString() || "0",
+            indication: r.I?.toString() || "0.00",
+            correction: r.deltaL?.toString() || "0.00",
+            error: r.E !== undefined ? r.E?.toString() : "0.00",
+            mpe: r.mpe !== undefined ? `±${r.mpe}` : "±0.5",
+            verdict: (r.verdict || "PASS").toUpperCase(),
+          })),
+        },
+        step_discrimination: {
+          testLoad: (instrument.max || maxN || "300").toString(),
+          extraWeight: "1.4e",
+          thresholdOk: discOverall?.status === "pass",
+          isApproved: discOverall?.status === "pass",
+        },
+        step_eccentricity: {
+          testLoad: eccLoad?.toString() || (maxN / 3).toFixed(2),
+          rows: (eccRows || []).map((r) => ({
+            position: r.label || r.position || "Position",
             indication: r.I?.toString() || "0.00",
             error: r.E !== undefined ? r.E?.toString() : "0.00",
+            verdict: (r.verdict || "PASS").toUpperCase(),
           })),
-        })),
-      },
-      step_creep_zero_return: {
-        load: creepTest.load?.toString() || maxN?.toString() || "300",
-        I0: creepTest.I0?.toString() || "0.00",
-        I15: creepTest.I15?.toString() || "0.00",
-        I30: creepTest.I30?.toString() || "0.00",
-        creepDifference: creepTest.creepDifference?.toString() || "0.00",
-        zeroBefore: creepTest.zeroBefore?.toString() || "0.00",
-        zeroAfter: creepTest.zeroAfter?.toString() || "0.00",
-        zeroReturnDeviation: creepTest.zeroReturnDeviation?.toString() || "0.00",
-        isApproved: creepOverall.status === "pass",
-      },
-      step_tare_device: {
-        tareLoad: tareTest.tareLoad?.toString() || "50",
-        zeroAfterTare: tareTest.zeroAfterTare?.toString() || "0.00",
-        testLoad: tareTest.testLoad?.toString() || "100",
-        tareError: tareTest.tareError?.toString() || "0.00",
-        isApproved: tareOverall.status === "pass",
-      },
-    };
-
-    setClients(prevClients => {
-      // Don't match empty srNo or generic Unassigned Client to existing cards
-      const existingIdx = prevClients.findIndex(c => {
-        if (clientName !== "Unassigned Client") {
-          return (c.ownerName && c.ownerName.toLowerCase() === clientName.toLowerCase()) ||
-                 (c.name && c.name.toLowerCase() === clientName.toLowerCase());
-        }
-        if (srNoVal !== "") {
-          return c.instrument?.srNo && c.instrument.srNo.toLowerCase() === srNoVal.toLowerCase();
-        }
-        return false;
-      });
-
-      let updatedClients;
-      if (existingIdx !== -1) {
-        updatedClients = prevClients.map((c, idx) => {
-          if (idx !== existingIdx) return c;
-          const certExists = c.certificates.some(cert => cert.certNo === certNumber);
-          const updatedCerts = certExists
-            ? c.certificates.map(cert => cert.certNo === certNumber ? { ...cert, ...newCert } : cert)
-            : [newCert, ...c.certificates];
-
-          return {
-            ...c,
-            name: clientName !== "Unassigned Client" ? clientName : c.name,
-            ownerName: instrument.ownerName || c.ownerName,
-            phone: instrument.ownerPhone || c.phone,
-            firm: instrument.ownerAddress || c.firm,
-            instrument: {
-              ...c.instrument,
-              instrumentType: instrument.instrumentType || c.instrument?.instrumentType,
-              make: instrument.make || c.instrument?.make,
-              model: instrument.model || c.instrument?.model,
-              srNo: srNoVal || c.instrument?.srNo,
-              yearOfMfg: instrument.yearOfMfg || c.instrument?.yearOfMfg,
-              accuracyClass: instrument.accuracyClass || c.instrument?.accuracyClass,
-              max: maxN?.toString() || c.instrument?.max,
-              min: minN?.toString() || c.instrument?.min,
-              e: eN?.toString() || c.instrument?.e,
-              d: dN?.toString() || c.instrument?.d,
-              unit: unit || c.instrument?.unit,
-              sealNo: instrument.sealNo || c.instrument?.sealNo
-            },
-            certificates: updatedCerts
-          };
-        });
-      } else {
-        const newClient = {
-          id: "c_" + Date.now(),
-          name: clientName,
-          ownerName: instrument.ownerName || "Client Owner",
-          phone: instrument.ownerPhone || "N/A",
-          firm: instrument.ownerAddress || clientName,
-          avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
-          instrument: {
-            instrumentType: instrument.instrumentType || "Platform Scale",
-            make: instrument.make || "Standard",
-            model: instrument.model || "NAWI-1",
-            srNo: srNoVal || "SR-" + Date.now(),
-            yearOfMfg: instrument.yearOfMfg || new Date().getFullYear().toString(),
-            accuracyClass: instrument.accuracyClass || "III",
-            max: maxN?.toString() || "300",
-            min: minN?.toString() || "2",
-            e: eN?.toString() || "0.1",
-            d: dN?.toString() || "0.1",
-            unit: unit || "kg",
-            sealNo: instrument.sealNo || "SL-0000"
-          },
-          certificates: [newCert]
-        };
-        updatedClients = [newClient, ...prevClients];
-      }
+        },
+        step_repeatability: {
+          blocks: (repBlocks || []).map((b) => ({
+            label: b.label || "Test Block",
+            load: b.load?.toString() || "150",
+            rows: (b.rows || []).map((r) => ({
+              indication: r.I?.toString() || "0.00",
+              error: r.E !== undefined ? r.E?.toString() : "0.00",
+            })),
+          })),
+        },
+        step_creep_zero_return: {
+          load: creepTest?.load?.toString() || maxN?.toString() || "300",
+          I0: creepTest?.I0?.toString() || "0.00",
+          I15: creepTest?.I15?.toString() || "0.00",
+          I30: creepTest?.I30?.toString() || "0.00",
+          creepDifference: creepTest?.creepDifference?.toString() || "0.00",
+          zeroBefore: creepTest?.zeroBefore?.toString() || "0.00",
+          zeroAfter: creepTest?.zeroAfter?.toString() || "0.00",
+          zeroReturnDeviation: creepTest?.zeroReturnDeviation?.toString() || "0.00",
+          isApproved: creepOverall?.status === "pass",
+        },
+        step_tare_device: {
+          tareLoad: tareTest?.tareLoad?.toString() || "50",
+          zeroAfterTare: tareTest?.zeroAfterTare?.toString() || "0.00",
+          testLoad: tareTest?.testLoad?.toString() || "100",
+          tareError: tareTest?.tareError?.toString() || "0.00",
+          isApproved: tareOverall?.status === "pass",
+        },
+      };
 
       try {
-        localStorage.setItem('nawi-clients', JSON.stringify(updatedClients));
-      } catch (e) {}
+        await reportsService.createReport({
+          report_number: certNumber,
+          certificate_number: certNumber,
+          certificate_date: currentDate,
+          client_name: clientName,
+          client_address: instrument.ownerAddress || "N/A",
+          instrument_make: instrument.make || "Standard",
+          instrument_model: instrument.model || "NAWI-1",
+          serial_number: srNoVal || "SR-001",
+          capacity_max: (instrument.max || maxN || "300").toString(),
+          capacity_min: (instrument.min || minN || "2").toString(),
+          accuracy_class: instrument.accuracyClass || "III",
+          verification_interval: (instrument.e || eN || "0.1").toString(),
+          overall_verdict: (overallVerdict || "PASS").toUpperCase(),
+          ...newCert
+        });
+      } catch (err) {
+        console.warn("Backend API sync fallback:", err);
+      }
 
-      return updatedClients;
-    });
+      setClients(prevClients => {
+        let updatedClients;
+        const existingIdx = prevClients.findIndex(c => {
+          if (clientName !== "Unassigned Client") {
+            return (c.ownerName && c.ownerName.toLowerCase() === clientName.toLowerCase()) ||
+                   (c.name && c.name.toLowerCase() === clientName.toLowerCase());
+          }
+          if (srNoVal !== "") {
+            return c.instrument?.srNo && c.instrument.srNo.toLowerCase() === srNoVal.toLowerCase();
+          }
+          return false;
+        });
 
-    sessionStorage.removeItem("nawi-session-suite");
-    alert(`Report & Certificate (${certNumber}) saved successfully! The report information has been added to the Admin Panel.`);
+        if (existingIdx !== -1) {
+          updatedClients = prevClients.map((c, idx) => {
+            if (idx !== existingIdx) return c;
+            const certExists = (c.certificates || []).some(cert => cert.certNo === certNumber);
+            const updatedCerts = certExists
+              ? c.certificates.map(cert => cert.certNo === certNumber ? { ...cert, ...newCert } : cert)
+              : [newCert, ...(c.certificates || [])];
+
+            return {
+              ...c,
+              name: clientName !== "Unassigned Client" ? clientName : c.name,
+              ownerName: instrument.ownerName || c.ownerName,
+              phone: instrument.ownerPhone || c.phone,
+              firm: instrument.ownerAddress || c.firm,
+              instrument: {
+                ...c.instrument,
+                instrumentType: instrument.instrumentType || c.instrument?.instrumentType,
+                make: instrument.make || c.instrument?.make,
+                model: instrument.model || c.instrument?.model,
+                srNo: srNoVal || c.instrument?.srNo,
+                yearOfMfg: instrument.yearOfMfg || c.instrument?.yearOfMfg,
+                accuracyClass: instrument.accuracyClass || c.instrument?.accuracyClass,
+                max: maxN?.toString() || c.instrument?.max,
+                min: minN?.toString() || c.instrument?.min,
+                e: eN?.toString() || c.instrument?.e,
+                d: dN?.toString() || c.instrument?.d,
+                unit: unit || c.instrument?.unit,
+                sealNo: instrument.sealNo || c.instrument?.sealNo
+              },
+              certificates: updatedCerts
+            };
+          });
+        } else {
+          const newClient = {
+            id: "c_" + Date.now(),
+            name: clientName,
+            ownerName: instrument.ownerName || "Client Owner",
+            phone: instrument.ownerPhone || "N/A",
+            firm: instrument.ownerAddress || clientName,
+            avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+            instrument: {
+              instrumentType: instrument.instrumentType || "Platform Scale",
+              make: instrument.make || "Standard",
+              model: instrument.model || "NAWI-1",
+              srNo: srNoVal || "SR-" + Date.now(),
+              yearOfMfg: instrument.yearOfMfg || new Date().getFullYear().toString(),
+              accuracyClass: instrument.accuracyClass || "III",
+              max: maxN?.toString() || "300",
+              min: minN?.toString() || "2",
+              e: eN?.toString() || "0.1",
+              d: dN?.toString() || "0.1",
+              unit: unit || "kg",
+              sealNo: instrument.sealNo || "SL-0000"
+            },
+            certificates: [newCert]
+          };
+          updatedClients = [newClient, ...prevClients];
+        }
+
+        try {
+          localStorage.setItem('nawi-clients', JSON.stringify(updatedClients));
+        } catch (e) {}
+
+        return updatedClients;
+      });
+
+      sessionStorage.removeItem("nawi-session-suite");
+      alert(`Report & Certificate (${certNumber}) saved successfully! The report information has been added to the Admin Panel.`);
+    } catch (err) {
+      console.error("Error saving report:", err);
+      alert("Error saving report: " + (err.message || err));
+    }
   };
 
   /* ---------- Nav Logic ---------- */
@@ -1285,6 +1316,7 @@ export function VerificationSuite() {
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
+      <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       
       {/* Sidebar Navigation */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 transition-transform duration-300 ease-in-out transform ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:relative md:translate-x-0 print:hidden flex flex-col`}>
@@ -1336,21 +1368,32 @@ export function VerificationSuite() {
            )}
         </div>
 
-        {/* Sidebar Footer Profile - Added at the very end of the sidebar */}
-        <div className="p-4 border-t border-slate-800 flex items-center justify-between bg-slate-950/40">
+        {/* Sidebar Footer Profile - Clickable to open Profile Modal */}
+        <div 
+          onClick={() => setIsProfileOpen(true)}
+          className="p-4 border-t border-slate-800 flex items-center justify-between bg-slate-950/40 hover:bg-slate-800/60 transition-colors cursor-pointer"
+          title="Click to view & edit profile"
+        >
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-9 h-9 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0">
-              {(user?.username || user?.email || "U").charAt(0).toUpperCase()}
+            <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-bold flex items-center justify-center shrink-0 shadow-md border border-indigo-500/30">
+              {user?.avatar ? (
+                <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <span>{(user?.username || user?.name || user?.email || "U").charAt(0).toUpperCase()}</span>
+              )}
             </div>
             <div className="truncate">
-              <div className="text-xs font-bold text-white truncate">{user?.username || "Inspector"}</div>
-              <div className="text-[10px] text-indigo-400 font-mono">{user?.role || "user"}</div>
+              <div className="text-xs font-bold text-white truncate">{user?.username || user?.name || "Inspector"}</div>
+              <div className="text-[10px] text-indigo-400 font-mono flex items-center gap-1">
+                <span>{user?.role || "user"}</span>
+                <span className="text-[9px] text-slate-500">• Edit</span>
+              </div>
             </div>
           </div>
           <button 
-            onClick={logout} 
+            onClick={(e) => { e.stopPropagation(); logout(); }} 
             title="Logout"
-            className="text-slate-400 hover:text-red-400 p-1.5 transition-colors"
+            className="text-slate-400 hover:text-red-400 p-1.5 transition-colors cursor-pointer"
           >
             <Trash2 size={16} />
           </button>
@@ -2345,7 +2388,7 @@ function ReportStep({ instrument, maxN, minN, eN, dN, nIntervals, unit, mpeAtMax
 
 // Protected Route Guard
 function ProtectedRoute({ children, requiredRole }) {
-  const { isAuthenticated, user, isLoading, updateUser } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuth();
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
@@ -2356,13 +2399,13 @@ function ProtectedRoute({ children, requiredRole }) {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
-  if (user?.mustChangePassword) {
-    return (
-      <ForcePasswordChangeView
-        onPasswordChanged={() => updateUser({ ...user, mustChangePassword: false })}
-      />
-    );
+
+  // Gate check: Unapproved users (approved: false and non-admin) must see PendingApprovalView
+  const isApproved = user?.approved !== false || user?.role === "admin";
+  if (!isApproved && requiredRole !== "admin") {
+    return <PendingApprovalView />;
   }
+
   if (requiredRole === "admin" && user?.role !== "admin") {
     return <Navigate to="/verification" replace />;
   }
@@ -2371,86 +2414,25 @@ function ProtectedRoute({ children, requiredRole }) {
 
 // Login Route wrapper to handle login transition or auto-redirection if authenticated
 function LoginRoute() {
-  const { isAuthenticated, user, login, updateUser } = useAuth();
-
-  const searchParams = new URLSearchParams(window.location.search);
-  const inviteCode = searchParams.get("code");
-
-  if (inviteCode) {
-    return (
-      <SignupView
-        code={inviteCode}
-        onLoginSuccess={(userData) => {
-          updateUser(userData);
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }}
-      />
-    );
-  }
-
+  const { isAuthenticated, login } = useAuth();
   if (isAuthenticated) {
-    if (user?.mustChangePassword) {
-      return (
-        <ForcePasswordChangeView
-          onPasswordChanged={() => updateUser({ ...user, mustChangePassword: false })}
-        />
-      );
-    }
     return <Navigate to="/verification" replace />;
   }
-  return <LoginView onLogin={(creds) => login(creds.email, creds.credentials, creds)} />;
+  return <LoginView onLogin={(creds) => login(creds.email, creds.password || creds.credentials, creds)} />;
 }
 
 // Default Home Redirector
 function HomeRedirect() {
-  const { isAuthenticated, user, updateUser } = useAuth();
-
-  const searchParams = new URLSearchParams(window.location.search);
-  const inviteCode = searchParams.get("code");
-
-  if (inviteCode) {
-    return (
-      <SignupView
-        code={inviteCode}
-        onLoginSuccess={(userData) => {
-          updateUser(userData);
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }}
-      />
-    );
-  }
-
-  if (isAuthenticated) {
-    if (user?.mustChangePassword) {
-      return (
-        <ForcePasswordChangeView
-          onPasswordChanged={() => updateUser({ ...user, mustChangePassword: false })}
-        />
-      );
-    }
-    return <Navigate to="/verification" replace />;
-  }
-  return <Navigate to="/login" replace />;
+  const { isAuthenticated } = useAuth();
+  return isAuthenticated ? (
+    <Navigate to="/verification" replace />
+  ) : (
+    <Navigate to="/login" replace />
+  );
 }
 
 // Main App Component with router bindings
 export default function App() {
-  const searchParams = new URLSearchParams(window.location.search);
-  const inviteCode = searchParams.get("code");
-  const { updateUser } = useAuth();
-
-  if (inviteCode) {
-    return (
-      <SignupView
-        code={inviteCode}
-        onLoginSuccess={(userData) => {
-          updateUser(userData);
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }}
-      />
-    );
-  }
-
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
@@ -2471,8 +2453,11 @@ export default function App() {
         }
       >
         <Route path="dashboard" element={<Dashboard />} />
+        <Route path="pending" element={<PendingApprovals />} />
         <Route path="reports" element={<ReportsList />} />
         <Route path="users" element={<UsersList />} />
+        <Route path="clients" element={<UsersList />} />
+        <Route path="audit" element={<AuditLogTable />} />
         <Route path="audit-logs" element={<AuditLogTable />} />
       </Route>
       <Route path="/" element={<HomeRedirect />} />

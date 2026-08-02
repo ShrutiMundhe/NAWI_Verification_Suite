@@ -21,6 +21,8 @@ import {
   Legend,
 } from "recharts";
 
+import PendingApprovals from "../PendingApprovals.jsx";
+
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444"];
 
 export default function Dashboard() {
@@ -81,6 +83,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
+      {/* Task 1: Pending Approvals Section in Admin Panel */}
+      <PendingApprovals />
+
       {/* Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {metrics.map((m, i) => {

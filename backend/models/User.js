@@ -1,81 +1,76 @@
 import mongoose from "mongoose";
-import bcrypt from "bcryptjs";
 
 const UserSchema = new mongoose.Schema(
   {
+    name: {
+      type: String,
+      required: [true, "Name is required"],
+      trim: true
+    },
     email: {
       type: String,
       required: [true, "Email is required"],
       unique: true,
       lowercase: true,
-      trim: true,
+      trim: true
     },
-    username: {
+    password: {
       type: String,
-      trim: true,
+      required: [true, "Password is required"]
     },
-    password_hash: {
+    idNumber: {
       type: String,
-      required: [true, "Password hash is required"],
-      minlength: 60,
+      required: [true, "Official Inspector ID Number is required"],
+      trim: true
+    },
+    credentials: {
+      type: String,
+      trim: true
+    },
+    avatar: {
+      type: String,
+      default: ""
     },
     role: {
       type: String,
       enum: ["admin", "user"],
-      default: "user",
+      default: "user"
     },
-    department: {
+    status: {
       type: String,
-      trim: true,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending"
     },
-    phone: {
-      type: String,
-      trim: true,
-    },
-    is_active: {
+    approved: {
       type: Boolean,
-      default: true,
+      default: false
     },
-    created_at: {
-      type: Date,
-      default: Date.now,
-    },
-    last_login: {
-      type: Date,
-    },
+    active: {
+      type: Boolean,
+      default: true
+    }
   },
   {
-    versionKey: false,
+    timestamps: true
   }
 );
 
-// Pre-save hook to hash password before saving
-UserSchema.pre("save", async function (next) {
-  const user = this;
-
-  // Only hash the password if it has been modified or is new
-  if (!user.isModified("password_hash")) return next();
-
-  try {
-    const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash(user.password_hash, salt);
-    user.password_hash = hash;
-    next();
-  } catch (error) {
-    next(error);
+UserSchema.pre("save", function (next) {
+  if (!this.credentials) {
+    this.credentials = this.idNumber;
   }
+  this.approved = this.status === "approved" || this.role === "admin";
+  this.active = this.status !== "rejected";
+  next();
 });
 
-// Compare candidate password with the stored password hash
-UserSchema.methods.comparePassword = async function (candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.password_hash);
-};
-
-// Exclude password_hash when converting user document to JSON
 UserSchema.methods.toJSON = function () {
-  const obj = this.toObject();
-  delete obj.password_hash;
-  return obj;
+  const user = this.toObject();
+  delete user.password;
+  user.id = user._id;
+  user.approved = user.status === "approved" || user.role === "admin";
+  user.active = user.status !== "rejected";
+  return user;
 };
 
 const User = mongoose.model("User", UserSchema);

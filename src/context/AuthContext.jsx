@@ -10,6 +10,18 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Helper to ensure avatar persistence per user email
+  const attachAvatar = (userData) => {
+    if (!userData) return null;
+    const email = userData.email?.toLowerCase().trim() || "";
+    const cachedAvatar = email ? localStorage.getItem("nawi_avatar_" + email) : null;
+    const avatar = userData.avatar || cachedAvatar || "";
+    if (avatar && email) {
+      localStorage.setItem("nawi_avatar_" + email, avatar);
+    }
+    return { ...userData, avatar };
+  };
+
   // Initialize and verify session on load
   useEffect(() => {
     async function initSession() {
@@ -19,7 +31,8 @@ export function AuthProvider({ children }) {
           const savedLocalUser = localStorage.getItem("nawi_local_user");
           if (savedLocalUser) {
             try {
-              setUser(JSON.parse(savedLocalUser));
+              const parsed = JSON.parse(savedLocalUser);
+              setUser(attachAvatar(parsed));
               setToken(storedToken);
             } catch {
               handleLogoutState();
@@ -30,8 +43,8 @@ export function AuthProvider({ children }) {
         } else {
           try {
             const data = await authService.verifyToken();
-            if (data && data.user) {
-              setUser(data.user);
+            if (data && data.valid && data.user) {
+              setUser(attachAvatar(data.user));
               setToken(storedToken);
             } else {
               handleLogoutState();
@@ -40,7 +53,8 @@ export function AuthProvider({ children }) {
             const savedLocalUser = localStorage.getItem("nawi_local_user");
             if (savedLocalUser) {
               try {
-                setUser(JSON.parse(savedLocalUser));
+                const parsed = JSON.parse(savedLocalUser);
+                setUser(attachAvatar(parsed));
                 setToken(storedToken);
               } catch {
                 handleLogoutState();
@@ -64,29 +78,47 @@ export function AuthProvider({ children }) {
   };
 
   const login = async (email, password, extraData = {}) => {
+    const finalPassword = password || extraData.password || extraData.credentials || "";
     setIsLoading(true);
     setError(null);
     try {
-      const data = await authService.login(email, password);
-      if (data.token) {
+      const data = await authService.login(email, finalPassword);
+      if (data.success && data.token) {
         localStorage.setItem("nawi_auth_token", data.token);
-        setUser(data.user);
+        const finalUser = attachAvatar(data.user);
+        setUser(finalUser);
         setToken(data.token);
         setIsLoading(false);
-        return data;
+        return { ...data, user: finalUser };
       }
     } catch (err) {
-      // Fallback for standalone / local mode when API server is offline
+      const status = err.response?.status || err.status;
+      const respData = err.response?.data || {};
+
+      // 403 Forbidden: Pending or Rejected account
+      if (status === 403) {
+        const errMsg = respData.message || err.message || "Your account is awaiting approval from the administrator.";
+        setError(errMsg);
+        setIsLoading(false);
+        const customError = new Error(errMsg);
+        customError.status = respData.status || (errMsg.includes("rejected") ? "rejected" : "pending");
+        throw customError;
+      }
+
+      // Standalone / Local mode fallback when backend server is offline
       const formattedEmail = email?.toLowerCase().trim() || "";
-      const isAdmin = formattedEmail === ADMIN_EMAIL;
-      const localUser = {
+      const isAdmin = formattedEmail === ADMIN_EMAIL.toLowerCase();
+      const localUser = attachAvatar({
         id: "local_" + Date.now(),
-        email: formattedEmail,
         name: extraData.name || extraData.username || formattedEmail.split("@")[0] || "Technician",
-        role: isAdmin ? "admin font-bold" : "user",
-        credentials: extraData.credentials || "",
-        mustChangePassword: false
-      };
+        username: extraData.name || extraData.username || formattedEmail.split("@")[0] || "Technician",
+        email: formattedEmail,
+        idNumber: extraData.idNumber || extraData.credentials || "INSP-LOCAL",
+        credentials: extraData.idNumber || extraData.credentials || "INSP-LOCAL",
+        role: isAdmin ? "admin" : "user",
+        status: "approved",
+        approved: true,
+      });
       const dummyToken = "local_token_" + Date.now();
       localStorage.setItem("nawi_auth_token", dummyToken);
       localStorage.setItem("nawi_local_user", JSON.stringify(localUser));
@@ -97,22 +129,49 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const register = async (email, password, username) => {
+  const register = async (userData) => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await authService.register(email, password, username);
-      if (data.token) {
-        localStorage.setItem("nawi_auth_token", data.token);
-        setUser(data.user);
-        setToken(data.token);
-        setIsLoading(false);
-        return data;
-      }
-    } catch (err) {
-      setError(err.message || "Registration failed");
+      const data = await authService.register(userData);
       setIsLoading(false);
-      throw err;
+      return data;
+    } catch (err) {
+      // Local dev fallback for registration when API offline
+      const formattedEmail = userData.email?.toLowerCase().trim() || "";
+      const isMasterAdmin = formattedEmail === ADMIN_EMAIL.toLowerCase();
+
+      let pending = [];
+      try {
+        pending = JSON.parse(localStorage.getItem("nawi_pending_users") || "[]");
+      } catch (e) {}
+
+      const newPendingUser = {
+        id: "u_" + Date.now(),
+        name: userData.name,
+        email: formattedEmail,
+        idNumber: userData.idNumber,
+        credentials: userData.idNumber,
+        role: isMasterAdmin ? "admin" : "user",
+        status: isMasterAdmin ? "approved" : "pending",
+        approved: isMasterAdmin,
+        createdAt: new Date().toISOString(),
+      };
+
+      if (!isMasterAdmin) {
+        pending.push(newPendingUser);
+        localStorage.setItem("nawi_pending_users", JSON.stringify(pending));
+      }
+
+      setIsLoading(false);
+      return {
+        success: true,
+        message: isMasterAdmin
+          ? "Master Admin account registered and approved successfully."
+          : "Registration successful! Awaiting administrator approval.",
+        status: newPendingUser.status,
+        user: newPendingUser,
+      };
     }
   };
 
@@ -121,7 +180,7 @@ export function AuthProvider({ children }) {
     try {
       await authService.logout();
     } catch (err) {
-      // Ignore network errors on logout
+      // Ignore errors on logout
     } finally {
       handleLogoutState();
       setIsLoading(false);
@@ -132,8 +191,8 @@ export function AuthProvider({ children }) {
   const verifyToken = async () => {
     try {
       const data = await authService.verifyToken();
-      if (data && data.user) {
-        setUser(data.user);
+      if (data && data.valid && data.user) {
+        setUser(attachAvatar(data.user));
         return true;
       }
       handleLogoutState();
@@ -144,22 +203,44 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const updateUser = (userData) => {
-    setUser(userData);
-    if (localStorage.getItem("nawi_local_user")) {
-      localStorage.setItem("nawi_local_user", JSON.stringify(userData));
+  const updateProfile = async (updatedFields) => {
+    let finalUser = null;
+    setUser((prevUser) => {
+      const updated = { ...prevUser, ...updatedFields };
+      const formattedEmail = updated.email?.toLowerCase().trim() || "";
+      const isAdminRole = formattedEmail === ADMIN_EMAIL.toLowerCase();
+      updated.role = isAdminRole ? "admin" : "user";
+
+      if (updated.avatar && formattedEmail) {
+        localStorage.setItem("nawi_avatar_" + formattedEmail, updated.avatar);
+      }
+
+      localStorage.setItem("nawi_local_user", JSON.stringify(updated));
+      finalUser = updated;
+      return updated;
+    });
+
+    // Save profile and avatar to MongoDB database via API
+    try {
+      if (finalUser) {
+        await authService.updateProfile(finalUser);
+      }
+    } catch (err) {
+      console.warn("Could not sync profile to backend MongoDB:", err);
     }
   };
 
+  const changePassword = async (currentPassword, newPassword) => {
+    return await authService.changePassword(currentPassword, newPassword);
+  };
+
   const isAuthenticated = !!token && !!user;
-  const isAdmin = isAuthenticated && user?.role === "admin";
+  const isAdmin = isAuthenticated && (user?.role === "admin" || user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase());
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        setUser,
-        updateUser,
         token,
         isLoading,
         error,
@@ -169,6 +250,8 @@ export function AuthProvider({ children }) {
         logout,
         register,
         verifyToken,
+        updateProfile,
+        changePassword,
       }}
     >
       {children}
