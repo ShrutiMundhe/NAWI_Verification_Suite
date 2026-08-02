@@ -158,7 +158,7 @@ export default function Dashboard() {
               <thead className="text-xs text-slate-400 bg-slate-50 uppercase">
                 <tr>
                   <th className="py-3 px-4">Report Number</th>
-                  <th className="py-3 px-4">Inspector</th>
+                  <th className="py-3 px-4">Calibration Engineer</th>
                   <th className="py-3 px-4">Verdict</th>
                   <th className="py-3 px-4">Status</th>
                 </tr>

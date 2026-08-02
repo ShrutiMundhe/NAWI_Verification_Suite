@@ -130,17 +130,17 @@ export default function ReportsList() {
             </select>
           </div>
 
-          {/* Inspector dropdown */}
+          {/* Calibration Engineer dropdown */}
           <div className="w-full md:w-48">
             <select
               value={inspectorFilter}
               onChange={(e) => setInspectorFilter(e.target.value)}
               className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="">All Inspectors</option>
+              <option value="">All Calibration Engineers</option>
               {users.map((u) => (
                 <option key={u._id} value={u._id}>
-                  {u.username || u.email}
+                  {u.username || u.name || u.email}
                 </option>
               ))}
             </select>
@@ -189,7 +189,7 @@ export default function ReportsList() {
                   <th className="py-3 px-6">Report Number</th>
                   <th className="py-3 px-6">Client Name</th>
                   <th className="py-3 px-6">Date Created</th>
-                  <th className="py-3 px-6">Inspector</th>
+                  <th className="py-3 px-6">Calibration Engineer</th>
                   <th className="py-3 px-6">Verdict</th>
                   <th className="py-3 px-6">Status</th>
                   <th className="py-3 px-6 text-right">Actions</th>
