@@ -1,55 +1,62 @@
 import jwt from "jsonwebtoken";
-import { verifyToken } from "../utils/tokens.js";
+import User from "../models/User.js";
 
 /**
- * Authentication middleware to verify Bearer JWT tokens.
+ * Middleware to verify JWT token from Authorization header.
+ * Attaches decoded user payload to req.user.
  */
-export function authenticate(req, res, next) {
+export const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
+
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "No token provided" });
+    return res.status(401).json({ message: "Access denied. No token provided." });
   }
 
   const token = authHeader.split(" ")[1];
 
   try {
-    const decoded = verifyToken(token);
-    req.user = {
-      userId: decoded.userId,
-      email: decoded.email,
-      role: decoded.role,
-    };
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your_jwt_secret_key");
+    req.user = decoded;
     next();
   } catch (error) {
-    if (error.name === "TokenExpiredError") {
-      return res.status(401).json({ message: "Token expired" });
-    }
-    return res.status(401).json({ message: "Invalid token" });
+    return res.status(401).json({ message: "Invalid or expired token." });
   }
-}
+};
 
 /**
- * Authorization middleware to check if user has the required role.
- * @param {string} requiredRole - e.g. 'admin' or 'user'
+ * Middleware to enforce Admin role check.
+ * Must be used after verifyToken middleware.
  */
-export function authorize(requiredRole) {
-  return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
+export const isAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ message: "Access forbidden. Admin role required." });
+  }
+  next();
+};
 
-    if (req.user.role !== requiredRole) {
-      if (requiredRole === "admin") {
-        return res.status(403).json({ message: "Admin access denied" });
-      }
-      return res.status(403).json({ message: "Insufficient permissions" });
-    }
+/**
+ * Middleware to enforce Account Approval check.
+ */
+export const requireApproved = async (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
-    // Additional check for admin role
-    if (requiredRole === "admin" && req.user.email !== process.env.ADMIN_EMAIL) {
-      return res.status(403).json({ message: "Admin access denied" });
-    }
+  if (req.user.role === "admin" || req.user.approved === true) {
+    return next();
+  }
 
-    next();
-  };
-}
+  try {
+    const dbUser = await User.findById(req.user.id || req.user._id);
+    if (dbUser && (dbUser.role === "admin" || dbUser.approved === true)) {
+      req.user.approved = true;
+      return next();
+    }
+  } catch (err) {}
+
+  return res.status(403).json({ error: "Account is pending admin approval" });
+};
+
+// Aliases for backward compatibility
+export const authenticate = verifyToken;
+export const authorize = (role) => (role === "admin" ? isAdmin : (req, res, next) => next());
