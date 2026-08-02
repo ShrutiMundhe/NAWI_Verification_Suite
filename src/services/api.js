@@ -1,10 +1,15 @@
 import axios from "axios";
 
+// Base API configuration with environment variable or local server fallback
 const API = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
+  timeout: 10000,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-// Request Interceptor: Attach JWT token if available
+// Request Interceptor: Attach JWT Bearer token to outgoing requests
 API.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("nawi_auth_token");
@@ -13,9 +18,7 @@ API.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Response Interceptor: Handle global errors like 401 Unauthorized
@@ -97,52 +100,111 @@ export const authService = {
 /* ================================================================= */
 
 function getLocalReportsData() {
-  let clients = [];
+  const reports = [];
+  const seenIds = new Set();
+
+  // 1. Read from saved reports in localStorage
   try {
-    const saved = localStorage.getItem("nawi-clients");
-    if (saved) clients = JSON.parse(saved);
+    const savedReports = JSON.parse(localStorage.getItem("nawi_saved_reports") || "[]");
+    savedReports.forEach((cert) => {
+      const certId = cert._id || cert.certNo || cert.report_number || "cert_" + (cert.certificate_number || Math.random().toString(36).substring(2, 9));
+      if (!seenIds.has(certId)) {
+        seenIds.add(certId);
+        reports.push({
+          _id: certId,
+          report_number: cert.report_number || cert.certNo || cert.certificate_number || "CERT-0000",
+          certificate_number: cert.certificate_number || cert.certNo || "CERT-0000",
+          certificate_date: cert.certificate_date || cert.date || new Date().toISOString(),
+          created_at: cert.created_at || cert.date || new Date().toISOString(),
+          inspector_name: cert.inspector_name || cert.inspectorName || cert.createdBy?.name || "Shivhari Mundhe",
+          client_name: cert.client_name || cert.clientName || "Unassigned Client",
+          client_address: cert.client_address || cert.clientAddress || "N/A",
+          instrument_make: cert.instrument_make || cert.instrumentDetails?.make || "Standard",
+          instrument_model: cert.instrument_model || cert.instrumentDetails?.model || "NAWI-1",
+          serial_number: cert.serial_number || cert.instrumentDetails?.srNo || "N/A",
+          capacity_max: cert.capacity_max || cert.instrumentDetails?.max || "300",
+          capacity_min: cert.capacity_min || cert.instrumentDetails?.min || "2",
+          accuracy_class: cert.accuracy_class || cert.instrumentDetails?.accuracyClass || "III",
+          verification_interval: cert.verification_interval || cert.instrumentDetails?.e || "0.1",
+          overall_verdict: (cert.overall_verdict || cert.verdict || "PASS").toUpperCase(),
+          status: cert.status || "completed",
+        });
+      }
+    });
   } catch (e) {}
 
-  const reports = [];
-  clients.forEach((client) => {
-    (client.certificates || []).forEach((cert) => {
-      reports.push({
-        _id: cert.certNo || "cert_" + Math.random().toString(36).substr(2, 9),
-        report_number: cert.certNo || "CERT-0000",
-        certificate_number: cert.certNo,
-        certificate_date: cert.date,
-        created_at: cert.date || new Date().toISOString(),
-        inspector_name: cert.inspectorName || cert.createdBy?.name || "Shivhari Mundhe",
-        client_name: client.name || client.ownerName || "Unassigned Client",
-        client_address: client.firm || "N/A",
-        instrument_make: cert.instrumentDetails?.make || client.instrument?.make || "Standard",
-        instrument_model: cert.instrumentDetails?.model || client.instrument?.model || "NAWI-1",
-        serial_number: cert.instrumentDetails?.srNo || client.instrument?.srNo || "N/A",
-        capacity_max: cert.instrumentDetails?.max || client.instrument?.max || "300",
-        capacity_min: cert.instrumentDetails?.min || client.instrument?.min || "2",
-        accuracy_class: cert.instrumentDetails?.accuracyClass || client.instrument?.accuracyClass || "III",
-        verification_interval: cert.instrumentDetails?.e || client.instrument?.e || "0.1",
-        overall_verdict: cert.verdict || "PASS",
-        status: "completed",
+  // 2. Read from nawi-clients certificates
+  try {
+    const saved = localStorage.getItem("nawi-clients");
+    let clients = [];
+    if (saved) clients = JSON.parse(saved);
+
+    clients.forEach((client) => {
+      (client.certificates || []).forEach((cert) => {
+        const certId = cert.certNo || "cert_" + cert.date;
+        if (!seenIds.has(certId) && !reports.some((r) => r.report_number === cert.certNo)) {
+          seenIds.add(certId);
+          reports.push({
+            _id: certId,
+            report_number: cert.certNo || "CERT-0000",
+            certificate_number: cert.certNo,
+            certificate_date: cert.date,
+            created_at: cert.date || new Date().toISOString(),
+            inspector_name: cert.inspectorName || cert.createdBy?.name || "Shivhari Mundhe",
+            client_name: client.name || client.ownerName || "Unassigned Client",
+            client_address: client.firm || "N/A",
+            instrument_make: cert.instrumentDetails?.make || client.instrument?.make || "Standard",
+            instrument_model: cert.instrumentDetails?.model || client.instrument?.model || "NAWI-1",
+            serial_number: cert.instrumentDetails?.srNo || client.instrument?.srNo || "N/A",
+            capacity_max: cert.instrumentDetails?.max || client.instrument?.max || "300",
+            capacity_min: cert.instrumentDetails?.min || client.instrument?.min || "2",
+            accuracy_class: cert.instrumentDetails?.accuracyClass || client.instrument?.accuracyClass || "III",
+            verification_interval: cert.instrumentDetails?.e || client.instrument?.e || "0.1",
+            overall_verdict: (cert.verdict || "PASS").toUpperCase(),
+            status: "completed",
+          });
+        }
       });
     });
-  });
+  } catch (e) {}
+
   return reports;
 }
 
 function getLocalDashboardData() {
   const reports = getLocalReportsData();
-  const completed = reports.filter((r) => r.status === "completed").length;
+  const completed = reports.filter((r) => r.status === "completed" || !r.status).length;
   const draft = reports.filter((r) => r.status === "draft").length;
+
+  // Group reports by Accuracy Class: I, II, III, IIII
+  const by_class = { "I": 0, "II": 0, "III": 0, "IIII": 0 };
+  reports.forEach((r) => {
+    let rawCls = (r.accuracy_class || "III").toString().trim().toUpperCase();
+    if (rawCls.includes("IIII") || rawCls.includes("4")) by_class["IIII"]++;
+    else if (rawCls.includes("III") || rawCls.includes("3")) by_class["III"]++;
+    else if (rawCls.includes("II") || rawCls.includes("2")) by_class["II"]++;
+    else if (rawCls.includes("I") || rawCls.includes("1")) by_class["I"]++;
+    else by_class["III"]++;
+  });
+
+  // Group reports by Verdict: PASS, CONDITIONAL, FAIL
+  const by_verdict = { PASS: 0, CONDITIONAL: 0, FAIL: 0 };
+  reports.forEach((r) => {
+    const v = (r.overall_verdict || "PASS").toString().toUpperCase();
+    if (v.includes("COND")) by_verdict.CONDITIONAL++;
+    else if (v.includes("FAIL")) by_verdict.FAIL++;
+    else by_verdict.PASS++;
+  });
+
   return {
     reportStats: {
       total: reports.length,
       by_status: { completed, draft },
-      by_class: { III: reports.length },
-      by_verdict: { PASS: reports.length, FAIL: 0 },
+      by_class,
+      by_verdict,
     },
     userStats: { total: 1, by_active: { active: 1, inactive: 0 } },
-    recentReports: reports.slice(0, 5),
+    recentReports: reports.slice(0, 10),
     recentAudits: [],
   };
 }
@@ -153,23 +215,27 @@ function getLocalDashboardData() {
 
 export const reportsService = {
   createReport: async (reportData) => {
+    let saved = [];
+    try {
+      saved = JSON.parse(localStorage.getItem("nawi_saved_reports") || "[]");
+    } catch (err) {}
+    saved.push(reportData);
+    localStorage.setItem("nawi_saved_reports", JSON.stringify(saved));
+
     try {
       const response = await API.post("/reports", reportData);
       return response.data;
     } catch (e) {
-      let saved = [];
-      try {
-        saved = JSON.parse(localStorage.getItem("nawi_saved_reports") || "[]");
-      } catch (err) {}
-      saved.push(reportData);
-      localStorage.setItem("nawi_saved_reports", JSON.stringify(saved));
       return { success: true, report: reportData };
     }
   },
   getReports: async () => {
     try {
       const response = await API.get("/reports");
-      return response.data;
+      if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+        return response.data;
+      }
+      return getLocalReportsData();
     } catch (e) {
       return getLocalReportsData();
     }
@@ -184,7 +250,10 @@ export const adminService = {
   adminGetDashboard: async () => {
     try {
       const response = await API.get("/admin/dashboard");
-      return response.data;
+      if (response.data && response.data.reportStats && response.data.reportStats.total > 0) {
+        return response.data;
+      }
+      return getLocalDashboardData();
     } catch (e) {
       return getLocalDashboardData();
     }
@@ -192,7 +261,11 @@ export const adminService = {
   adminGetAllReports: async (params = {}) => {
     try {
       const response = await API.get("/admin/reports", { params });
-      return response.data;
+      if (response.data && Array.isArray(response.data.reports) && response.data.reports.length > 0) {
+        return response.data;
+      }
+      const reports = getLocalReportsData();
+      return { reports, total: reports.length, page: 1, totalPages: 1 };
     } catch (e) {
       const reports = getLocalReportsData();
       return { reports, total: reports.length, page: 1, totalPages: 1 };
@@ -227,7 +300,24 @@ export const adminService = {
   adminGetAllUsers: async (params = {}) => {
     try {
       const response = await API.get("/admin/users", { params });
-      return response.data;
+      if (response.data && Array.isArray(response.data.users) && response.data.users.length > 0) {
+        return response.data;
+      }
+      let localUser = {};
+      try {
+        localUser = JSON.parse(localStorage.getItem("nawi_local_user") || "{}");
+      } catch (err) {}
+      const user = {
+        _id: "u_1",
+        email: localUser.email || "ilmchikhli@gmail.com",
+        name: localUser.name || localUser.username || "Shivhari Mundhe",
+        idNumber: localUser.idNumber || localUser.credentials || "INSP-001",
+        role: localUser.role || "admin",
+        status: localUser.status || "approved",
+        is_active: true,
+        created_at: new Date().toISOString(),
+      };
+      return { users: [user], total: 1, page: 1, totalPages: 1 };
     } catch (e) {
       let localUser = {};
       try {
@@ -278,49 +368,25 @@ export const adminService = {
   listPendingUsers: async () => {
     try {
       const response = await API.get("/auth/pending-users");
-      return response.data;
-    } catch (e) {
-      try {
-        const altResponse = await API.get("/users/pending");
-        return altResponse.data;
-      } catch (err2) {
-        let pending = [];
-        try {
-          const saved = localStorage.getItem("nawi_pending_users");
-          if (saved) pending = JSON.parse(saved);
-        } catch (err3) {}
-        return { users: pending, pendingUsers: pending, total: pending.length };
+      if (response.data && Array.isArray(response.data.users)) {
+        return response.data;
       }
+      const pending = JSON.parse(localStorage.getItem("nawi_pending_users") || "[]");
+      return { success: true, users: pending, pendingUsers: pending, total: pending.length };
+    } catch (e) {
+      const pending = JSON.parse(localStorage.getItem("nawi_pending_users") || "[]");
+      return { success: true, users: pending, pendingUsers: pending, total: pending.length };
     }
   },
-
   updateUserStatus: async (userId, status) => {
     try {
       const response = await API.put(`/auth/users/${userId}/status`, { status });
       return response.data;
     } catch (e) {
-      try {
-        const endpoint = status === "approved" ? "approve" : "reject";
-        const altRes = await API.patch(`/users/${userId}/${endpoint}`);
-        return altRes.data;
-      } catch (err2) {
-        try {
-          let pending = JSON.parse(localStorage.getItem("nawi_pending_users") || "[]");
-          pending = pending.filter((u) => u.id !== userId && u._id !== userId);
-          localStorage.setItem("nawi_pending_users", JSON.stringify(pending));
-        } catch (err3) {}
-        return { success: true, message: `User status updated to ${status} locally.` };
-      }
+      let pending = JSON.parse(localStorage.getItem("nawi_pending_users") || "[]");
+      pending = pending.filter((u) => u.id !== userId && u._id !== userId);
+      localStorage.setItem("nawi_pending_users", JSON.stringify(pending));
+      return { success: true, message: `User status updated to ${status}` };
     }
   },
-
-  approveUser: async (userId) => {
-    return adminService.updateUserStatus(userId, "approved");
-  },
-
-  rejectUser: async (userId) => {
-    return adminService.updateUserStatus(userId, "rejected");
-  },
 };
-
-export default API;
