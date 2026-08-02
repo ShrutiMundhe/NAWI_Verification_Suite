@@ -517,8 +517,40 @@ export async function generateStructuredVectorPDF(report) {
   doc.roundedRect(pageWidth / 2 - 35, yPos, 70, 16, 4, 4, "FD");
   doc.text(isPass ? "PASS" : "FAIL", pageWidth / 2, yPos + 12, { align: "center" });
 
+  // Declaration & Notes Box
+  yPos = 72;
+  drawCardBox(yPos, 38);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 27, 75);
+  doc.text("DECLARATION & NOTES:", margin + 4, yPos + 6);
+
+  doc.setFont("helvetica", isPass ? "normal" : "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(isPass ? 30 : 185, isPass ? 41 : 28, isPass ? 59 : 28);
+  const confStmt = isPass
+    ? "1. Instrument CONFORMS to OIML Recommendation / LM (Gen) Rules, 2011."
+    : "1. Instrument DOES NOT CONFORM to OIML Recommendation / LM (Gen) Rules, 2011.";
+  doc.text(confStmt, margin + 4, yPos + 13);
+
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(30, 41, 59);
+  doc.text(`2. Verified and stamped for use in commercial transactions: ${isPass ? "Yes" : "No"}.`, margin + 4, yPos + 19);
+
+  const engNotes = report.remarks || report.engineer_remarks || report.step_visual_exam?.notes || "";
+  if (engNotes) {
+    doc.setFont("helvetica", "bold");
+    doc.text("Calibration Engineer Observations:", margin + 4, yPos + 25);
+    doc.setFont("helvetica", "normal");
+    doc.text(String(engNotes).substring(0, 100), margin + 55, yPos + 25);
+  }
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text("3. In case of rejected instruments, a separate certificate of rejection stating reasons against each item shall be issued.", margin + 4, yPos + 32);
+
   // Signature Boxes
-  yPos = 80;
+  yPos = 118;
   const boxWidth = 84;
 
   doc.setDrawColor(203, 213, 225);
@@ -536,7 +568,7 @@ export async function generateStructuredVectorPDF(report) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
-  doc.text("Authorized Inspector Signature", margin + boxWidth / 2, yPos + 30, { align: "center" });
+  doc.text("Calibration Engineer Signature", margin + boxWidth / 2, yPos + 30, { align: "center" });
 
   // Permit Stamp Box
   doc.setFillColor(248, 250, 252);

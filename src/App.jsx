@@ -1307,7 +1307,7 @@ export function VerificationSuite() {
       case "repeatability": return repBlocks ? <RepeatabilityStep maxN={maxN} blocks={repBlocks} setBlocks={setRepBlocks} resultFn={repResult} unit={unit} cls={cls} repOverall={repOverall} obs={observations.repeatability} setObs={updateObs('repeatability')} onBack={() => goto("eccentricity")} onNext={() => goto("creep")} /> : null;
       case "creep": return <CreepStep creepTest={creepTest} setCreepTest={setCreepTest} resultFn={creepResult} unit={unit} obs={observations.creep} setObs={updateObs('creep')} onBack={() => goto("repeatability")} onNext={() => goto("tare")} />;
       case "tare": return <TareDeviceStep tareTest={tareTest} setTareTest={setTareTest} resultFn={tareResult} unit={unit} maxN={maxN} obs={observations.tare} setObs={updateObs('tare')} onBack={() => goto("creep")} onNext={() => goto("report")} />;
-      case "report": return <ReportStep instrument={instrument} maxN={maxN} minN={minN} eN={eN} dN={dN} nIntervals={nIntervals} unit={unit} mpeAtMax={mpeAtMax} observations={observations} accuracyOverall={accuracyOverall} discOverall={discOverall} eccOverall={eccOverall} repOverall={repOverall} visualOverall={visualOverall} zeroTrackOverall={zeroTrackOverall} tareOverall={tareOverall} creepOverall={creepOverall} overallVerdict={overallVerdict} onBack={() => goto("tare")} onSave={handleSaveReportToAdmin} />;
+      case "report": return <ReportStep instrument={instrument} setInstrument={setInstrument} maxN={maxN} minN={minN} eN={eN} dN={dN} nIntervals={nIntervals} unit={unit} mpeAtMax={mpeAtMax} observations={observations} accuracyOverall={accuracyOverall} discOverall={discOverall} eccOverall={eccOverall} repOverall={repOverall} visualOverall={visualOverall} zeroTrackOverall={zeroTrackOverall} tareOverall={tareOverall} creepOverall={creepOverall} overallVerdict={overallVerdict} onBack={() => goto("tare")} onSave={handleSaveReportToAdmin} />;
       default: return null;
     }
   };
@@ -2080,7 +2080,7 @@ function CertHead({ children }) {
   return <th className="border border-black px-2 py-2 align-middle text-center font-bold bg-slate-100 text-black leading-tight">{children}</th>;
 }
 
-function ReportStep({ instrument, maxN, minN, eN, dN, nIntervals, unit, mpeAtMax, observations,
+function ReportStep({ instrument, setInstrument, maxN, minN, eN, dN, nIntervals, unit, mpeAtMax, observations,
   accuracyOverall, discOverall, eccOverall, repOverall, visualOverall, zeroTrackOverall, tareOverall, creepOverall, overallVerdict, onBack, onSave
 }) {
   const reportDataRef = useRef(null);
@@ -2095,7 +2095,7 @@ function ReportStep({ instrument, maxN, minN, eN, dN, nIntervals, unit, mpeAtMax
         report_number: certNumber,
         created_at: currentDate,
         certificate_date: currentDate,
-        inspector_name: instrument.inspectorName || "Shivhari Mundhe",
+        inspector_name: instrument.calibrationEngineer || instrument.inspectorName || "Shivhari Mundhe",
         client_name: clientName,
         client_address: instrument.ownerAddress || instrument.ownerFirm || "N/A",
         instrument_make: instrument.make || "Standard",
@@ -2112,6 +2112,7 @@ function ReportStep({ instrument, maxN, minN, eN, dN, nIntervals, unit, mpeAtMax
         lab_name: instrument.labName || "Legal Metrology Verification Laboratory",
         standard_mass_cert: "CAL-MASS-M1-2026-991",
         standard_mass_class: "Class M1 (OIML R 111 Standard)",
+        remarks: instrument.remarks || "",
         step_visual_exam: {
           markingPlateOk: true,
           approvalIndicatorOk: true,
@@ -2190,6 +2191,20 @@ function ReportStep({ instrument, maxN, minN, eN, dN, nIntervals, unit, mpeAtMax
             <Printer size={18} /> Print Official PDF
           </button>
         </div>
+      </div>
+
+      {/* Calibration Engineer Observations & Remarks Editor */}
+      <div className="mb-6 p-5 rounded-2xl bg-white border border-slate-200 shadow-sm print:hidden">
+        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+          <FileText size={16} className="text-indigo-600" /> Calibration Engineer Observations & Remarks
+        </label>
+        <textarea
+          value={instrument.remarks || ""}
+          onChange={(e) => setInstrument && setInstrument((prev) => ({ ...prev, remarks: e.target.value }))}
+          placeholder="Enter Calibration Engineer's specific observations, notes, or reasons for non-conformance... (Reflected in Declaration & Notes below and exported PDF)"
+          rows={3}
+          className="w-full px-4 py-3 rounded-xl border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans"
+        />
       </div>
 
       {overallVerdict === "pending" && (
@@ -2297,13 +2312,26 @@ function ReportStep({ instrument, maxN, minN, eN, dN, nIntervals, unit, mpeAtMax
 
         <div className="text-xs mb-16 border border-black p-4">
           <div className="font-bold uppercase mb-2">Declaration & Notes:</div>
-          <div className="space-y-1">
-            <div>1. Instrument conforms to OIML Recommendation / LM (Gen) Rules, 2011.</div>
+          <div className="space-y-1.5">
+            <div>
+              1. {overallVerdict === "pass" || overallVerdict === "PASS" ? (
+                <span>Instrument <b>CONFORMS</b> to OIML Recommendation / LM (Gen) Rules, 2011.</span>
+              ) : overallVerdict === "fail" || overallVerdict === "FAIL" ? (
+                <span className="font-bold text-red-700">Instrument <b>DOES NOT CONFORM</b> to OIML Recommendation / LM (Gen) Rules, 2011.</span>
+              ) : (
+                <span>Instrument verification in progress (pending overall test results).</span>
+              )}
+            </div>
             <div>2. Verified and stamped for use in commercial transactions: <b>{stamped}</b>.</div>
-            <div className="flex gap-4 mt-2">
+            <div className="flex gap-4 my-1">
               <span>{instrument.verifiedWhere === "premises" ? "☑" : "☐"} i. In premises of GATC</span>
               <span>{instrument.verifiedWhere === "insitu" ? "☑" : "☐"} ii. In-situ at place of user</span>
             </div>
+            {instrument.remarks && (
+              <div className="mt-2 text-xs bg-slate-50 border border-slate-300 p-2.5 rounded">
+                <b>Calibration Engineer Observations:</b> {instrument.remarks}
+              </div>
+            )}
             <div className="mt-2 text-[10px]">3. In case of rejected instruments, a separate certificate of rejection stating reasons against each item shall be issued.</div>
           </div>
         </div>
