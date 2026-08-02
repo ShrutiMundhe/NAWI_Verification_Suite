@@ -41,11 +41,11 @@ import {
 import { Routes, Route, Navigate, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext.jsx";
 import { useReport } from "./context/ReportContext.jsx";
-import AdminLayout from "./components/AdminPanel/AdminLayout.jsx";
-import Dashboard from "./components/AdminPanel/Dashboard/Dashboard.jsx";
-import ReportsList from "./components/AdminPanel/Reports/ReportsList.jsx";
-import UsersList from "./components/AdminPanel/Users/UsersList.jsx";
-import AuditLogTable from "./components/AdminPanel/AuditLogs/AuditLogTable.jsx";
+import AdminLayout from "./Components/AdminPanel/AdminLayout.jsx";
+import Dashboard from "./Components/AdminPanel/Dashboard/Dashboard.jsx";
+import ReportsList from "./Components/AdminPanel/Reports/ReportsList.jsx";
+import UsersList from "./Components/AdminPanel/Users/UsersList.jsx";
+import AuditLogTable from "./Components/AdminPanel/AuditLogs/AuditLogTable.jsx";
 
 /* ---------------------------------------------------------------- */
 /* Constants & pure helpers                                          */
